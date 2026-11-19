@@ -1,4 +1,4 @@
-from chess_elo_drift.records import GameRecord, classify_result, count_plies
+from chesslab.records import GameRecord, classify_result, count_plies
 
 PGN = (
     '[Event "Live Chess"]\n[White "alice"]\n[Black "bob"]\n\n'
@@ -78,7 +78,7 @@ def test_from_dict_ignores_unknown_columns():
 
 
 def test_the_engine_refuses_a_game_that_starts_from_a_set_up_position():
-    from chess_elo_drift.engine.evaluator import _read_mainline
+    from chesslab.engine.evaluator import _read_mainline
 
     set_up = (
         '[SetUp "1"]\n'

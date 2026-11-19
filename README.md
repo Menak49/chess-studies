@@ -1,233 +1,101 @@
-# chess-elo-drift
+# chess-studies
 
-What playing strength does a chess rating buy, year by year from 2014 to 2026, on
-chess.com and on Lichess? And how do the four big online pools convert into one
-another in 2026?
+Measurement studies of online chess, run on public data from chess.com and Lichess.
 
-A rating says how you do against the pool, not how well you play. If the pool's
-strength drifts, a number that stays put does not. This study measures the
-strength behind the number directly, by re-analysing real games with one fixed
-engine. It asks three questions:
+Each study asks a question where the obvious number can mislead: a rating that
+stays put while the pool around it drifts, a win that says nothing about the
+position on the board, a correlation that only reflects who chose to play. The
+studies answer these by going back to the games themselves. They collect them
+with a sampling design built for the question, and re-analyse every move with
+one fixed engine instead of trusting the sites' own figures.
 
-1. Year by year: does a 1500 in 2014 play like a 1500 in 2026? Asked separately
-   for chess.com blitz, chess.com rapid, Lichess blitz and Lichess rapid.
-2. Site against site: which Lichess rating plays like a given chess.com rating,
-   in each year and cadence?
-3. The 2026 conversion: formulas and tables between chess.com rapid, chess.com
-   blitz, Lichess rapid and Lichess blitz.
+## Studies
 
-The deliverable is [`reports/findings.md`](reports/findings.md), written entirely
-from the data by the `report` command.
+| Study | Question | Findings |
+|---|---|---|
+| [elo-drift](studies/elo-drift/README.md) | What playing strength does a rating buy, year by year from 2014 to 2026, on chess.com and Lichess? How do the four big online pools convert into one another in 2026? | [findings.md](studies/elo-drift/reports/findings.md) |
 
-## Main results
+## How the repository is organised
 
-Full detail, tables and caveats are in [`reports/findings.md`](reports/findings.md).
-Numbers below are accuracy points per year at a fixed rating. A negative trend
-would mean the same rating buys less accurate play now.
-
-- **Year by year, almost no drift.** On one clock (part 1) and on the full corpus
-  with the clock controlled (part 2), three of the four pools show no detectable
-  trend: chess.com blitz -0.001 per year, chess.com rapid +0.002, Lichess rapid
-  -0.014. Only Lichess blitz moves, towards more accurate play at the same rating
-  (+0.095 per year, roughly +20 rating points per year, an order of magnitude
-  only). Its 2020-2021 dip looks like a composition effect, not a rating-system
-  change. The slope of accuracy against rating flattens in every pool.
-- **Site against site, too noisy to convert with.** One accuracy point is worth
-  only 165-230 rating points, so the offsets jump by about 145 points between
-  consecutive years and disagree with the linked-account conversion (median -305).
-  Use the conversion below instead.
-- **The 2026 conversion.** Equipercentile tables and straight-line formulas (with
-  their valid range) link chess.com rapid and blitz with Lichess rapid and blitz.
-  An individual's rating scatters about 360 points either way around a converted
-  level, because people really are better at one cadence or site than another.
-- **The first study's headline did not hold.** The first version found that
-  chess.com ratings had become easier to reach. Most of that came from chess.com
-  moving 10|0 from blitz to rapid in 2020. On time controls that never changed
-  class, the rapid gap is -0.04 (-0.93 to +0.85).
-
-## How the questions are made answerable
-
-**The metric is recomputed, not read off.** Neither site's own accuracy figure can
-be compared across years or sites. chess.com's exists only for games somebody
-reviewed, and its formula changed over the years. Lichess's is a different formula
-again. So every game is re-analysed locally with the same engine at the same fixed
-depth (`config.ENGINE_DEPTH`), and accuracy, average centipawn loss and error
-counts all come from that single pass.
-
-**Every year is sampled the same way.** Each (site, year) is crawled from the same
-calendar months (March, June, September) with an equal quota per month, and every
-model also controls for the month, so seasonal differences in who plays don't pass
-for a change over the years. Blitz and rapid are never pooled, and neither are the
-two sites. Only ratings in 600-2400 are studied, each side of a game at the rating
-it carried on that game. Games must be long enough to say something
-(`config.MIN_PLIES`), and a player contributes at most three rows per site, year
-and cadence (`config.MAX_GAMES_PER_PLAYER_PER_CELL`), so a prolific account can't
-dominate a year.
-
-**The sampling is stratified, because neither API offers a random player.** The
-crawler walks the opponent graph: every archive it reads reveals more accounts,
-together with the rating each carried at that moment. The walk is steered toward
-whichever 200-point band is furthest from its quota, so the whole window fills
-instead of piling up in the middle. Some bands can't be filled. Lichess had a
-rating floor of 800 for years, and chess.com rapid barely reached 2200 while it
-meant fifteen-minute games. In that case the crawl stops after a run of requests
-that fill nothing, rather than draining the budget.
-
-**Pools are compared only while they existed as pools.** Two rating systems changed
-shape inside the period, and the study follows each site's own record of which pool
-a game was rated in.
-
-- chess.com moved 10|0 from blitz to rapid on 2020-09-10. The API keeps the class a
-  game was rated in at the time, so a 2016 10|0 game counts as blitz, as its rating
-  did. The chess.com trend is also fitted on each side of that date.
-- Lichess split Rapid out of Classical on 2017-12-01 and seeded it with copies of
-  Classical ratings. Its API labels old games by today's speed rules, so a 2016
-  10+0 game comes back as "rapid" while its rating is a Classical one. Those games
-  are excluded (`config.POOL_START`), and the Lichess rapid series starts in 2018.
-
-**Clocks are held fixed.** The mix of time controls inside a cadence changes over
-the years, above all at chess.com's 2020 reclassification, and longer games are
-played more accurately. Every model controls for the estimated game length
-(base + 40 x increment). A robustness check keeps only the chess.com time controls
-whose class never changed (`config.STABLE_TIME_CONTROLS`).
-
-**The year effect comes from a regression, not a difference of means.** Years can
-sit at different points inside the same rating band, and a band-mean comparison
-would read that as a change in skill. Rating enters continuously, one model per
-site and cadence:
+The studies share infrastructure and nothing else.
 
 ```
-accuracy ~ year + rating + rating² + log(clock)      (errors clustered by player)
+src/chesslab/              shared, study-independent
+  settings.py              paths, API settings, and the engine settings
+  http.py                  retrying, throttled HTTP client both sites share
+  chesscom/                chess.com client and endpoint wrappers
+  lichess/                 Lichess client and game export
+  records.py               GameRecord (one game, two sides) and RatingSnapshot
+  store.py                 append-only, resumable JSONL stores
+  engine/                  UCI analysis, accuracy/ACPL scoring, parallel runner
+studies/<name>/
+  src/<name>/              the study: its config, how it samples, how it analyses
+  tests/
+  reports/                 its deliverable: findings.md, tables, figures
+  README.md                its question, method and results
+data/<name>/               each study's collected and processed data (not tracked)
+tools/stockfish/           the engine binary (not tracked)
+tests/                     tests of the shared package
 ```
 
-The report gives each year's accuracy at fixed ratings, the year effects against
-2026, a linear trend, the trends on each side of chess.com's 2020 break, and whether
-the rating slope itself drifted. A band-by-year table sits beside it as a shape
-check.
+What belongs where:
 
-**Sites are compared by equating accuracy.** For each year and cadence, each site's
-accuracy-rating curve is fitted at the same clock. A chess.com rating is then
-matched to the Lichess rating that plays as accurately, with a bootstrap over
-players.
-
-**The 2026 conversion pairs people, not moves.** Converting between pools needs the
-same person rated in both.
-
-- Rapid and blitz on one site: current ratings of thousands of active accounts
-  (`survey`), with same-month rating snapshots from the crawl as a cross-check. On
-  chess.com, no single account's opponents may make up more than a dozen of the
-  sample. Opponents are matched on one cadence's rating, and a sample selected on
-  one rating biases any symmetric conversion.
-- chess.com and Lichess: Lichess profiles that link their owner's chess.com
-  account. It's a self-declared, self-selected pairing, but a direct one.
-
-Only established ratings count (enough games, a low rating deviation, recent play).
-The tables use equipercentile linking: a rating maps to the rating at the same
-percentile among the paired people. That follows a curved relation and is exactly
-invertible. The printed formula is its straight-line version, with the range it is
-valid for. Outliers, mostly wrong links, are screened with a robust rule and
-counted. The conversion is cross-checked against a second source, against chained
-routes through a third pool, against the accuracy equating above, and against the
-published ChessGoals survey.
+- **`chesslab` knows how, a study decides what.** Talking to an API, storing a
+  game or scoring a move is shared. Which accounts to visit, which games to keep,
+  the quotas, the strata and the inclusion rules all belong to the study, in its
+  own `config.py`.
+- **The engine is the common instrument.** Its depth, the opening plies skipped
+  and the binary are set once in `chesslab.settings`. Scores from different
+  studies are comparable, and reusable from one study to another, only because
+  they come from the same instrument. Changing these settings changes every
+  study's results.
+- **Each study has its own sample.** A game collected by one study can save
+  another a download or an engine pass, but it must never enter the other study's
+  sample just because it is already on disk: it carries the first study's
+  selection with it.
 
 ## Setup
 
 ```bash
 pip install -r requirements.txt
-pip install -e .                  # makes the package importable from anywhere
+pip install -e .                  # installs chesslab and every study package
 ```
 
-Commands are then run as `python -m chess_elo_drift.cli ...`. Without installing
-the package, prefix them with `PYTHONPATH=src`. The install also declares a
-`chess-elo-drift` console script, but writing it needs permission on the
-interpreter's `Scripts` directory, which a system-wide Python install doesn't
-grant. Inside a virtualenv it lands normally.
+Without installing, put the shared package and the study on the path, for
+instance `PYTHONPATH="src;studies/elo-drift/src"` on Windows (`:` instead of `;`
+elsewhere).
 
 The engine is not vendored. Download a Stockfish build and put the binary at
-`tools/stockfish/stockfish.exe`, or point `--engine` elsewhere. Any recent version
-works, as long as a single one is used for the whole run, since it is the measuring
-instrument. This study's run used Stockfish 19.
+`tools/stockfish/stockfish.exe`. Any recent version works, as long as one version
+is used for everything that is compared. The studies so far used Stockfish 19.
 
-## Running the study
-
-Four commands, each resumable, each writing where the next one reads:
+Each study is run through its own command line, described in its README:
 
 ```bash
-python -m chess_elo_drift.cli collect    # both APIs   -> data/raw/<site>/games_<year>.jsonl
-python -m chess_elo_drift.cli survey     # both APIs   -> data/raw/conversion/
-python -m chess_elo_drift.cli evaluate   # stored PGNs -> data/processed/evaluations.csv
-python -m chess_elo_drift.cli report     # everything  -> reports/
+python -m elo_drift.cli collect | survey | evaluate | report
 ```
 
-`collect` fills a quota per (cadence x 200-point band) for every site and year.
-`--platform chesscom|lichess|both` and `--years 2014-2026` (or `2018,2026`) pick
-what to crawl, so the two sites can run as two processes at once. Re-running tops
-the corpus up rather than doubling it. Lichess asks for one request at a time and
-locks an address out of its streaming endpoints for about an hour after a stream is
-abandoned, so never run two Lichess jobs at once or kill one mid-request. Useful
-flags: `--per-cell`, `--max-requests`, `--min-interval`.
+## Rules that hold for every study
 
-`survey` records current ratings for the rapid/blitz pairings and follows every
-chess.com link found on a Lichess profile. It paces Lichess's bulk user endpoint
-under its limit of 8,000 accounts per 10 minutes.
+- **One Lichess job at a time, across all studies.** Lichess serves one request at
+  a time per client and locks an address out of its streaming endpoints for about
+  an hour when a stream is abandoned. Never run two Lichess crawls at once, and
+  never kill one mid-request.
+- **Same engine, same depth.** Re-analysing part of a corpus with another Stockfish
+  version or depth makes its scores incomparable with the rest.
+- **Published results are tagged.** Before changing shared code in a way that
+  could move an existing study's numbers, check that its `report` still
+  reproduces its tracked tables. The state of elo-drift as first published is
+  tagged `elo-drift-v1.0`.
 
-`evaluate` scores games on every core and writes rows as they complete. It skips
-games already in the output, so an interrupted run resumes for free, and a worker
-whose engine dies starts a fresh one. `--workers` sets the parallelism (lower it on
-a machine short of memory). `--limit N` spends a fixed engine budget on a subsample
-spread evenly across the design.
+## Adding a study
 
-### The single-clock corpus (part 1 of the findings)
-
-The findings open with a simple comparison on one clock per pool: 3+0 blitz, and
-rapid at 15+10 on chess.com or 10+0 on Lichess (almost nobody under 2000 plays 15+10
-there). No clock correction is needed. This part has its own corpus, kept apart from
-the main one:
-
-```bash
-python -m chess_elo_drift.cli collect  --focus --platform chesscom --per-cell 24 --max-requests 2000
-python -m chess_elo_drift.cli collect  --focus --platform lichess  --per-cell 24 --max-requests 2000
-python -m chess_elo_drift.cli evaluate --focus    # -> data/processed/evaluations_focus.csv
-python -m chess_elo_drift.cli report              # picks the focus file up when it exists
-```
-
-`--focus` keeps only games on those clocks and ratings up to
-`config.FOCUS_RATING_MAX` (15+10 is rare above 2000). It stores them under
-`data/raw/focus/` and reuses the games on those clocks, with their engine scores,
-that the main crawl had already met. The same one-Lichess-job rule applies.
-
-### The report
-
-`report` builds the estimation sample, runs every comparison and writes the findings
-in three parts: the single-clock comparison, the full corpus with the clock
-controlled, and the first version of the study with how chess.com's 2020
-reclassification of 10|0 distorted it. The first study's chart is redrawn there and
-flagged as not the original. The outputs are:
-
-```
-reports/findings.md                # the answers, with method and caveats
-reports/tables/*.csv               # every table behind them, full precision
-reports/figures/*.png              # accuracy by year, site offsets, conversions
-```
-
-## Layout
-
-```
-src/chess_elo_drift/
-  config.py           every tunable of the protocol, in one immutable place
-  records.py          GameRecord (one game, two sides) and RatingSnapshot
-  http.py             the retrying, throttled client both sites share
-  selection.py        spending a fixed engine budget evenly across the design
-  chesscom/           chess.com client and endpoint wrappers
-  lichess/            Lichess client, game export, extraction and seeding
-  collection/         the stratified snowball crawler, its sources and stores,
-                      and the focus-clock filter of the single-clock corpus
-  conversion/         the 2026 rating survey and cross-site account links
-  engine/             UCI analysis, accuracy/ACPL scoring, parallel runner
-  analysis/           estimation sample, yearly models, site equating,
-                      conversion fits, figures, findings note
-tests/                unit tests, no network and no engine required
-```
+1. Create `studies/<name>/src/<name>/` with a `config.py` holding the protocol, and
+   a `cli.py` that drives collection and analysis.
+2. Write data under `data/<name>/` (`chesslab.settings.DATA_ROOT / "<name>"`).
+3. Add `studies/<name>/src` to `where` and `pythonpath`, and
+   `studies/<name>/tests` to `testpaths`, in `pyproject.toml`.
+4. Add a row to the table above once the study has findings.
 
 ## Testing
 
@@ -236,30 +104,3 @@ python -m pytest
 ```
 
 The suite is offline: the APIs are faked and no engine is started.
-
-## Known limits
-
-- **Snowball sampling is not a random sample of the population.** It is steered to
-  cover the rating window evenly, which is what the questions need. But the accounts
-  reached are those connected to the seeds by play, weighted toward the active.
-  Results describe the opposition you would meet at a rating, not every account on
-  a site.
-- **Survivorship grows with age.** A 2014 game can only be read from an account that
-  still exists. Players who closed theirs are invisible.
-- **Rating is the rating at the time of that game.** Provisional Lichess ratings are
-  dropped. chess.com exposes no per-game equivalent.
-- **Accuracy is one operationalisation of strength.** It comes from a fixed-depth
-  engine's evaluation swing per move, and a deeper search would give different
-  absolute numbers. Only comparisons are claimed, and they hold because the
-  instrument is identical everywhere.
-- **Equating accuracy is a weak converter.** Accuracy rises only a few tenths of a
-  point per 100 rating, so sampling noise becomes a large rating error. The site
-  offsets are indicative. The linked-account conversion is the one to use.
-- **Lichess blitz dips in 2020-2021.** The cause is a hypothesis (a covid-era influx
-  of casual players) that the design can't confirm.
-- **Rating systems changed along the way.** Floors, starting ratings, Glicko
-  parameters and cadence boundaries all moved. A year effect mixes pool composition
-  with those administrative changes, and the report lists the known ones.
-- **The opening is not scored** (`config.OPENING_PLIES_SKIPPED`). Book moves are
-  memorised rather than calculated, and the availability of preparation has itself
-  changed over the years.

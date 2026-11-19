@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from chess_elo_drift.engine.accuracy import (
+from chesslab.engine.accuracy import (
     BLUNDER_THRESHOLD,
     CENTIPAWN_CAP,
     centipawn_loss,

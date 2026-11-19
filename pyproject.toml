@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chess-elo-drift"
-version = "2.0.0"
-description = "What playing strength does a chess rating buy on chess.com and Lichess, 2014-2026, and how do the 2026 pools convert?"
+name = "chess-studies"
+version = "1.0.0"
+description = "Measurement studies of online chess on chess.com and Lichess, built on one shared crawler and one fixed engine."
 requires-python = ">=3.10"
 
 # Dependencies and their versions live in requirements.txt, which carries the
@@ -13,14 +13,15 @@ requires-python = ">=3.10"
 # same pins drift apart.
 
 [project.scripts]
-chess-elo-drift = "chess_elo_drift.cli:main"
+elo-drift = "elo_drift.cli:main"
 
+# The shared package lives in src/, each study's package in studies/<name>/src/.
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "studies/elo-drift/src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
+testpaths = ["tests", "studies/elo-drift/tests"]
+pythonpath = ["src", "studies/elo-drift/src"]
 
 [tool.ruff]
 line-length = 100
