@@ -76,6 +76,7 @@ LICHESS_RATE_LIMIT_PAUSE_SECONDS = 61.0
 
 #: The opening explorer is served from its own host and, unlike the rest of the
 #: public API, answers only requests carrying a personal token. Any token works,
-#: without a scope; it is read from this environment variable, never stored.
+#: without a scope; it is read from this variable, in the environment or in the
+#: untracked `.env` file at the repository root (see `.env.example`).
 LICHESS_EXPLORER_ROOT = "https://explorer.lichess.ovh"
 LICHESS_TOKEN_ENV = "LICHESS_TOKEN"

@@ -16,11 +16,11 @@ Two properties of the index matter to whoever reads its counts:
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from chesslab import settings
+from chesslab.env import get_secret
 from chesslab.lichess.client import LichessClient
 from chesslab.pgn import normalise_san
 from chesslab.settings import YearMonth
@@ -83,11 +83,12 @@ class ExplorerClient(LichessClient):
 
     @classmethod
     def from_environment(cls, **kwargs) -> "ExplorerClient":
-        token = os.environ.get(settings.LICHESS_TOKEN_ENV, "").strip()
+        token = get_secret(settings.LICHESS_TOKEN_ENV)
         if not token:
             raise MissingTokenError(
-                f"the Lichess explorer needs a personal token in ${settings.LICHESS_TOKEN_ENV} "
-                "(create one without any scope at https://lichess.org/account/oauth/token)"
+                f"the Lichess explorer needs a personal token: set {settings.LICHESS_TOKEN_ENV} "
+                "in the .env file at the repository root (create one without any scope at "
+                "https://lichess.org/account/oauth/token)"
             )
         return cls(token, **kwargs)
 

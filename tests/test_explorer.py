@@ -55,8 +55,15 @@ def test_fetch_position_asks_for_one_cell():
     assert params["topGames"] == 0 and params["recentGames"] == 0
 
 
-def test_client_requires_a_token(monkeypatch):
+@pytest.fixture(autouse=True)
+def no_real_dotenv(monkeypatch, tmp_path):
+    """Never read the developer's own .env, which may hold a real token."""
+    monkeypatch.setattr("chesslab.env.DOTENV_PATH", tmp_path / ".env")
     monkeypatch.delenv(settings.LICHESS_TOKEN_ENV, raising=False)
+    return tmp_path / ".env"
+
+
+def test_client_requires_a_token():
     with pytest.raises(MissingTokenError):
         ExplorerClient.from_environment()
 
@@ -65,3 +72,22 @@ def test_client_sends_the_token(monkeypatch):
     monkeypatch.setenv(settings.LICHESS_TOKEN_ENV, "lip_secret")
     with ExplorerClient.from_environment() as client:
         assert client._session.headers["Authorization"] == "Bearer lip_secret"
+
+
+def test_client_reads_the_token_from_dotenv(no_real_dotenv):
+    no_real_dotenv.write_text('# comment\nLICHESS_TOKEN="lip_fromfile"\n', encoding="utf-8")
+    with ExplorerClient.from_environment() as client:
+        assert client._session.headers["Authorization"] == "Bearer lip_fromfile"
+
+
+def test_the_environment_wins_over_dotenv(no_real_dotenv, monkeypatch):
+    no_real_dotenv.write_text("LICHESS_TOKEN=lip_fromfile\n", encoding="utf-8")
+    monkeypatch.setenv(settings.LICHESS_TOKEN_ENV, "lip_fromenv")
+    with ExplorerClient.from_environment() as client:
+        assert client._session.headers["Authorization"] == "Bearer lip_fromenv"
+
+
+def test_an_empty_dotenv_value_is_no_token(no_real_dotenv):
+    no_real_dotenv.write_text("LICHESS_TOKEN=\nexport OTHER='x'\n", encoding="utf-8")
+    with pytest.raises(MissingTokenError):
+        ExplorerClient.from_environment()
