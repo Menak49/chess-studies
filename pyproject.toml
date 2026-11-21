@@ -14,14 +14,15 @@ requires-python = ">=3.10"
 
 [project.scripts]
 elo-drift = "elo_drift.cli:main"
+trap-immunity = "trap_immunity.cli:main"
 
 # The shared package lives in src/, each study's package in studies/<name>/src/.
 [tool.setuptools.packages.find]
-where = ["src", "studies/elo-drift/src"]
+where = ["src", "studies/elo-drift/src", "studies/trap-immunity/src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "studies/elo-drift/tests"]
-pythonpath = ["src", "studies/elo-drift/src"]
+testpaths = ["tests", "studies/elo-drift/tests", "studies/trap-immunity/tests"]
+pythonpath = ["src", "studies/elo-drift/src", "studies/trap-immunity/src"]
 
 [tool.ruff]
 line-length = 100
