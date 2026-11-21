@@ -73,3 +73,9 @@ BACKOFF_BASE_SECONDS = 2.0
 
 #: Lichess asks that a client which receives a 429 waits a full minute.
 LICHESS_RATE_LIMIT_PAUSE_SECONDS = 61.0
+
+#: The opening explorer is served from its own host and, unlike the rest of the
+#: public API, answers only requests carrying a personal token. Any token works,
+#: without a scope; it is read from this environment variable, never stored.
+LICHESS_EXPLORER_ROOT = "https://explorer.lichess.ovh"
+LICHESS_TOKEN_ENV = "LICHESS_TOKEN"
