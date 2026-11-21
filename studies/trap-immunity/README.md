@@ -135,6 +135,14 @@ The victims are, by construction, players who met a setter. That is exactly the
 population the question is about: given that you face the trap, do you fall
 into it?
 
+**Victims are followed from 400 to 1799**, in 200-point bands. The 2021 trial
+found about 3,000 baits below 1500, 47 at 1500-1799 and 4 above: these traps are
+set against weak players, and bands above 1800 would never fill. Baits met above
+the ceiling are stored but left out of the analysis, so the chess.com
+`1600-1999` group only holds 1600-1799. The Lichess explorer keeps its whole
+scale: its ratings run higher than chess.com's and file a game under the average
+of both players, so a Lichess 1600 still covers much of the trap's audience.
+
 **Rare traps are dropped, not forced.** A trap is reported for a site only once
 300 baits were reached there in total. `coverage.csv` lists every trap and site
 with its count and whether it made the cut.

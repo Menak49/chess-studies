@@ -106,7 +106,7 @@ def test_trap_rows_reject_ineligible_games():
 
 def test_victim_bands():
     assert victim_band(399) is None and victim_band(400) == 400
-    assert victim_band(1399) == 1200 and victim_band(2400) is None
+    assert victim_band(1399) == 1200 and victim_band(1799) == 1600 and victim_band(1800) is None
 
 
 # -- the crawl -----------------------------------------------------------------

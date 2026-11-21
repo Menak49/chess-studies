@@ -116,8 +116,11 @@ def lichess_rates(rows: Iterable[dict], by: tuple[str, ...] = ("trap", "period",
 
 
 def trap_games_frame(rows: Iterable[dict]) -> pd.DataFrame:
-    """Trap games of followed traps, falls recomputed, capped per setter."""
-    frame = pd.DataFrame([row for row in rows if row["trap"] in TRAPS_BY_SLUG])
+    """Trap games of followed traps under the victim ceiling, falls recomputed, capped per setter."""
+    frame = pd.DataFrame([
+        row for row in rows
+        if row["trap"] in TRAPS_BY_SLUG and row["victim_rating"] < config.VICTIM_RATING_MAX
+    ])
     if frame.empty:
         return frame
     traps = frame["trap"].map(TRAPS_BY_SLUG)

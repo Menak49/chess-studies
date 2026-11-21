@@ -68,6 +68,11 @@ def test_rows_of_traps_no_longer_followed_are_ignored():
     assert set(lichess_rates(rows)["trap"]) == {"stafford"}
 
 
+def test_victims_above_the_ceiling_are_left_out():
+    rows = [trap_game(0, "s", 1799, True), trap_game(1, "s", config.VICTIM_RATING_MAX, True)]
+    assert list(trap_games_frame(rows)["victim_rating"]) == [1799]
+
+
 def test_chesscom_falls_are_recomputed_from_the_move():
     rows = [trap_game(0, "s", 900, False), trap_game(1, "s", 900, False)]
     rows[0]["victim_move"] = "Qh5"  # a fall by the engine's classification

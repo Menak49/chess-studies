@@ -112,9 +112,12 @@ def chesscom_months(year: int) -> tuple[YearMonth, ...]:
 
 
 #: Victims are binned on their own rating, in 200-point bands. Traps mostly
-#: catch weak players, so the window starts lower than elo-drift's.
+#: catch weak players, so the window starts lower than elo-drift's and stops at
+#: 1800: the 2021 trial found 47 baits for victims at 1500-1799 and 4 above,
+#: against about 3,000 below, so higher bands would never fill and would only
+#: keep the crawl searching. Victims above it are left out of the analysis too.
 VICTIM_RATING_MIN = 400
-VICTIM_RATING_MAX = 2400
+VICTIM_RATING_MAX = 1800
 VICTIM_BAND_WIDTH = 200
 
 #: Trap games wanted per (trap, victim band) and per year.
