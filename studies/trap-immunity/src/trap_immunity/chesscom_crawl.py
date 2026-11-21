@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import random
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Protocol
@@ -174,6 +174,10 @@ class TrapTarget:
     def trap_deficit(self, slug: str) -> int:
         return sum(max(0, self.per_cell - self._counts[c]) for c in self.cells if c[0] == slug)
 
+    def trap_need(self, slug: str) -> float:
+        """The share of a trap's quota still missing, from 1 (nothing yet) to 0."""
+        return self.trap_deficit(slug) / (len(victim_bands()) * self.per_cell)
+
     @property
     def is_complete(self) -> bool:
         return all(self._counts[cell] >= self.per_cell for cell in self.cells)
@@ -237,8 +241,8 @@ class AdopterCrawler:
         # would stay among the first seeds' acquaintances for thousands of visits.
         self._frontier: list[str] = []
         self._queued: set[str] = set()
-        #: setter -> (times seen setting a trap, which traps)
-        self._candidates: dict[str, tuple[int, set[str]]] = {}
+        #: setter -> how many times they were seen setting each trap
+        self._candidates: dict[str, Counter[str]] = {}
         self._last_progress_at = 0
         self.stats = CrawlStats()
 
@@ -324,15 +328,20 @@ class AdopterCrawler:
         return self._frontier.pop()
 
     def _best_candidate(self) -> str | None:
-        """The setter seen most often among those whose traps still want games."""
-        best, best_score = None, 0
-        for username, (sightings, traps) in self._candidates.items():
-            if sightings < config.ADOPTER_MIN_SIGHTINGS:
+        """The setter most worth following now.
+
+        A setter is worth their sightings of each trap, weighted by how much of
+        that trap's quota is still missing. Without the weight, the commonest
+        trap (Scholar's mate is set in a fair share of all 1.e4 e5 games) would
+        take the whole budget long after its cells are full.
+        """
+        best, best_score = None, 0.0
+        for username, sightings in self._candidates.items():
+            if sum(sightings.values()) < config.ADOPTER_MIN_SIGHTINGS:
                 continue
-            if not any(self._target.trap_deficit(slug) for slug in traps):
-                continue
-            if sightings > best_score:
-                best, best_score = username, sightings
+            score = max(count * self._target.trap_need(slug) for slug, count in sightings.items())
+            if score > best_score:
+                best, best_score = username, score
         if best is not None:
             del self._candidates[best]
         return best
@@ -380,9 +389,7 @@ class AdopterCrawler:
         setter = row["setter"]
         if self._followed(setter):
             return
-        sightings, traps = self._candidates.get(setter, (0, set()))
-        traps.add(row["trap"])
-        self._candidates[setter] = (sightings + 1, traps)
+        self._candidates.setdefault(setter, Counter())[row["trap"]] += 1
 
     def _queue_opponents(self, raw: dict[str, Any], owner: str) -> None:
         if len(self._frontier) >= MAX_FRONTIER:

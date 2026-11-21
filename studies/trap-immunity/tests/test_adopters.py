@@ -88,7 +88,7 @@ def open_store_at(tmp_path):
 
 def test_trap_rows_describe_setter_victim_and_move():
     (row,) = trap_rows(game("g", "Alice", "Bob", STAFFORD_FALL), MONTHS[2], TrapDetector())
-    assert row["trap"] == "stafford-bg5"
+    assert row["trap"] == "stafford"
     assert (row["victim"], row["setter"]) == ("alice", "bob")
     assert (row["victim_rating"], row["setter_rating"]) == (1000, 1100)
     assert row["victim_move"] == "Bg5" and row["fell"] is True
@@ -162,6 +162,17 @@ def test_a_failing_account_is_skipped(tmp_path):
 
 def test_the_traps_are_wired_to_the_target():
     target = TrapTarget(per_cell=1, per_setter=1)
-    row = {"trap": "stafford-bg5", "victim_rating": 900, "setter": "s"}
+    row = {"trap": "stafford", "victim_rating": 900, "setter": "s"}
     assert target.credit(row) and not target.credit({**row, "setter": "t"})
-    assert target.trap_deficit("stafford-bg5") == len(target.cells) // len(TRAPS_BY_SLUG) - 1
+    assert target.trap_deficit("stafford") == len(target.cells) // len(TRAPS_BY_SLUG) - 1
+
+
+def test_setters_of_traps_still_missing_games_come_first(tmp_path):
+    walk, _ = crawler(tmp_path, FakeArchives({}), per_cell=2, per_setter=2)
+    for i in range(2 * 10):  # fill every Stafford band
+        walk._target.credit({"trap": "stafford", "victim_rating": 400 + 100 * i, "setter": f"x{i}"})
+    walk._sighting({"trap": "stafford", "setter": "busy"})
+    walk._sighting({"trap": "stafford", "setter": "busy"})
+    walk._sighting({"trap": "englund", "setter": "rare"})
+    assert walk._best_candidate() == "rare"
+    assert walk._best_candidate() is None  # Stafford is full: not worth following

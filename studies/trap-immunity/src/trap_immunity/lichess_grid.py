@@ -4,9 +4,8 @@ Each cell of the grid costs two requests:
 
 * the *parent* position, where the setter chooses whether to set the trap. The
   share of games continuing with the setter's move is the trap's adoption;
-* the *bait* position, where the victim moves. The share continuing with a
-  `falls` move is the fall rate, and the results of those games say what
-  falling cost.
+* the *bait* position, where the victim moves. Every reply is stored with its
+  results; the analysis then counts the falls.
 
 A cell whose parent was never reached is stored without its second request: no
 game can then have reached the bait either, short of a transposition too rare
@@ -64,34 +63,25 @@ def grid(
 
 
 def cell_row(cell: Cell, parent: ExplorerPosition, bait: ExplorerPosition | None) -> dict:
-    """The stored form of a cell: counts only, enough to recompute every rate."""
+    """The stored form of a cell: raw counts only.
+
+    Every reply played at the bait is kept with its results, and nothing is
+    classified here. Which replies fall is decided by the engine classification
+    at analysis time, so changing the threshold never means collecting again.
+    """
     setter_move = parent.move(cell.trap.setter_move)
-    row = {
+    return {
         "trap": cell.trap.slug,
         "period": cell.period.label,
         "speed": cell.speed,
         "rating": cell.rating,
         "parent_games": parent.games,
         "setter_move_games": setter_move.games if setter_move else 0,
-        "bait_games": 0,
-        "fall_games": 0,
-        "fall_white": 0,
-        "fall_draws": 0,
-        "fall_black": 0,
-        "bait_moves": {},
+        "bait_games": bait.games if bait else 0,
+        "bait_moves": {
+            move.san: [move.white, move.draws, move.black] for move in (bait.moves if bait else ())
+        },
     }
-    if bait is None:
-        return row
-    falls = [move for move in bait.moves if cell.trap.is_fall(move.san)]
-    row.update(
-        bait_games=bait.games,
-        fall_games=sum(move.games for move in falls),
-        fall_white=sum(move.white for move in falls),
-        fall_draws=sum(move.draws for move in falls),
-        fall_black=sum(move.black for move in falls),
-        bait_moves={move.san: move.games for move in bait.moves},
-    )
-    return row
 
 
 @dataclass
@@ -117,9 +107,6 @@ class GridCollector:
         self._store = store
         self._max_requests = max_requests
         self._max_failures = max_consecutive_failures
-        # The bait of one trap can be the parent of the next (the two Stafford
-        # positions), so a position read once in a run is not read again.
-        self._cache: dict[tuple, ExplorerPosition] = {}
         self.stats = GridStats()
 
     def collect(self, cells: Iterable[Cell]) -> GridStats:
@@ -157,11 +144,8 @@ class GridCollector:
         return cell_row(cell, parent, bait)
 
     def _position(self, cell: Cell, play: tuple[str, ...]) -> ExplorerPosition:
-        key = (play, cell.period.label, cell.speed, cell.rating)
-        if key not in self._cache:
-            self._cache[key] = fetch_position(
-                self._client, play, speeds=[cell.speed], ratings=[cell.rating],
-                since=cell.period.first, until=cell.period.last,
-            )
-            self.stats.requests += 1
-        return self._cache[key]
+        self.stats.requests += 1
+        return fetch_position(
+            self._client, play, speeds=[cell.speed], ratings=[cell.rating],
+            since=cell.period.first, until=cell.period.last,
+        )

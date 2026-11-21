@@ -5,8 +5,7 @@ from trap_immunity.lichess_grid import GridCollector, cell_key, grid
 from trap_immunity.storage import KeyedJsonl
 from trap_immunity.traps import TRAPS_BY_SLUG
 
-STAFFORD = TRAPS_BY_SLUG["stafford-bg5"]
-QUEEN = TRAPS_BY_SLUG["stafford-queen"]
+STAFFORD = TRAPS_BY_SLUG["stafford"]
 Q3 = Period("2020Q3", YearMonth(2020, 7), YearMonth(2020, 9))
 
 PARENT = {
@@ -53,14 +52,13 @@ def store(tmp_path):
     return KeyedJsonl(tmp_path / "cells.jsonl", cell_key)
 
 
-def test_a_cell_counts_adoption_and_falls(tmp_path):
+def test_a_cell_keeps_the_raw_counts(tmp_path):
     cells = store(tmp_path)
     GridCollector(FakeExplorer(), cells).collect(grid([STAFFORD], [Q3], ["blitz"], [1200]))
     (row,) = cells.read_all()
     assert row["parent_games"] == 100 and row["setter_move_games"] == 50
-    assert row["bait_games"] == 50 and row["fall_games"] == 20
-    assert (row["fall_white"], row["fall_black"]) == (4, 16)
-    assert row["bait_moves"] == {"Bg5": 20, "Be2": 30}
+    assert row["bait_games"] == 50
+    assert row["bait_moves"] == {"Bg5": [4, 0, 16], "Be2": [16, 2, 12]}
 
 
 def test_an_unreached_parent_saves_the_second_request(tmp_path):
@@ -70,13 +68,6 @@ def test_an_unreached_parent_saves_the_second_request(tmp_path):
     assert len(client.calls) == 1
     (row,) = cells.read_all()
     assert row["parent_games"] == 0 and row["bait_games"] == 0
-
-
-def test_a_position_shared_by_two_traps_is_read_once(tmp_path):
-    client = FakeExplorer()
-    GridCollector(client, store(tmp_path)).collect(grid([STAFFORD, QUEEN], [Q3], ["blitz"], [1200]))
-    # Stafford parent, Stafford bait (= queen parent, cached), queen bait.
-    assert len(client.calls) == 3
 
 
 def test_a_resumed_run_skips_stored_cells(tmp_path):
