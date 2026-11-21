@@ -55,6 +55,14 @@ def test_fetch_position_asks_for_one_cell():
     assert params["topGames"] == 0 and params["recentGames"] == 0
 
 
+def test_no_moves_asks_for_the_starting_position():
+    client = FakeClient(PAYLOAD)
+    fetch_position(client, (), speeds=["blitz"], ratings=[1200],
+                   since=YearMonth(2020, 7), until=YearMonth(2020, 9))
+    _, params = client.calls[0]
+    assert "play" not in params
+
+
 @pytest.fixture(autouse=True)
 def no_real_dotenv(monkeypatch, tmp_path):
     """Never read the developer's own .env, which may hold a real token."""

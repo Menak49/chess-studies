@@ -17,6 +17,7 @@ import pandas as pd  # noqa: E402
 
 from trap_immunity import config  # noqa: E402
 from trap_immunity.analysis import (  # noqa: E402
+    FREQUENCY_SCALE,
     MIN_GAMES_PLOTTED,
     SITES,
     before_after,
@@ -28,6 +29,7 @@ from trap_immunity.analysis import (  # noqa: E402
 )
 from trap_immunity.chesscom_crawl import open_store as open_trap_store  # noqa: E402
 from trap_immunity.lichess_grid import open_store as open_explorer_store  # noqa: E402
+from trap_immunity.lichess_grid import open_totals_store  # noqa: E402
 from trap_immunity.traps import TRAPS, Trap  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,10 @@ def load_explorer_rows() -> list[dict]:
     return list(open_explorer_store().read_all())
 
 
+def load_explorer_totals() -> list[dict]:
+    return list(open_totals_store().read_all())
+
+
 def load_trap_games(years=config.CHESSCOM_YEARS) -> list[dict]:
     return [
         row
@@ -57,6 +63,7 @@ def load_trap_games(years=config.CHESSCOM_YEARS) -> list[dict]:
 def generate_report(
     explorer_rows: list[dict] | None = None,
     trap_games: list[dict] | None = None,
+    totals: list[dict] | None = None,
     tables: Path = config.TABLES,
     figures: Path = config.FIGURES,
 ) -> list[Path]:
@@ -68,13 +75,16 @@ def generate_report(
     """
     explorer_rows = load_explorer_rows() if explorer_rows is None else explorer_rows
     trap_games = load_trap_games() if trap_games is None else trap_games
+    totals = load_explorer_totals() if totals is None else totals
+    if explorer_rows and not totals:
+        logger.info("no Lichess totals yet: run `lichess-totals` for the frequency")
     if not explorer_rows and not trap_games:
         logger.warning("nothing collected yet: run `lichess` or `chesscom` first")
         return []
     tables.mkdir(parents=True, exist_ok=True)
     figures.mkdir(parents=True, exist_ok=True)
 
-    lichess = lichess_rates(explorer_rows)
+    lichess = lichess_rates(explorer_rows, totals=totals)
     chesscom = chesscom_rates(trap_games)
     covered = coverage(lichess, chesscom)
     written = [_csv(covered, tables / "coverage.csv")]
@@ -91,7 +101,7 @@ def generate_report(
 
     if not lichess.empty:
         written.append(_csv(lichess, tables / "lichess_rates.csv"))
-        by_speed = _keep(lichess_rates(explorer_rows, by=("trap", "period", "speed", "group")), kept["lichess"])
+        by_speed = _keep(lichess_rates(explorer_rows, by=("trap", "period", "speed", "group"), totals=totals), kept["lichess"])
         written.append(_csv(by_speed, tables / "lichess_rates_by_speed.csv"))
     if not chesscom.empty:
         written.append(_csv(chesscom, tables / "chesscom_rates.csv"))
@@ -128,20 +138,22 @@ def _of_trap(frame: pd.DataFrame, trap: Trap) -> pd.DataFrame:
 
 
 def plot_trap(trap: Trap, lichess: pd.DataFrame, chesscom: pd.DataFrame, path: Path) -> Path | None:
-    """Three panels on one time axis: Lichess adoption, Lichess falls, chess.com falls."""
+    """Four panels on one time axis: Lichess frequency and adoption, then the falls on both sites."""
     lichess, chesscom = _of_trap(lichess, trap), _of_trap(chesscom, trap)
     if lichess.empty and chesscom.empty:
         return None
 
     panels = [
+        (f"Lichess: games reaching the bait per {FREQUENCY_SCALE:,} games", lichess, "frequency",
+         "all_games", "-"),
         ("Lichess: share of games where the trap is set", lichess, "adoption", "parent_games", "-"),
         ("Lichess: share of victims who take the bait", lichess, "fall_rate", "bait_games", "-"),
         ("chess.com: share of victims who take the bait", chesscom, "fall_rate", "bait_games", "o"),
     ]
-    figure, axes = plt.subplots(len(panels), 1, figsize=(9, 9.5), sharex=True)
+    figure, axes = plt.subplots(len(panels), 1, figsize=(9, 12), sharex=True)
     for axis, (title, frame, rate, games, style) in zip(axes, panels):
         _panel(axis, title, frame, rate, games, style, trap)
-    # One legend for the three panels, built from whichever panels have data.
+    # One legend for all panels, built from whichever panels have data.
     labelled = {}
     for axis in axes:
         for handle, label in zip(*axis.get_legend_handles_labels()):
@@ -170,7 +182,8 @@ def plot_trap(trap: Trap, lichess: pd.DataFrame, chesscom: pd.DataFrame, path: P
 
 def _panel(axis, title, frame, rate, games, style, trap: Trap) -> None:
     axis.set_title(title, fontsize=9, color=INK, loc="left")
-    axis.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
+    if rate != "frequency":
+        axis.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
     axis.grid(axis="y", color=GRID, linewidth=0.8)
     axis.set_axisbelow(True)
     for side in ("top", "right"):
@@ -187,12 +200,12 @@ def _panel(axis, title, frame, rate, games, style, trap: Trap) -> None:
         axis.axvline(when, color=MUTED, linestyle="--", linewidth=1)
         axis.annotate("video", (when, 1), xycoords=("data", "axes fraction"),
                       xytext=(3, -20), textcoords="offset points", fontsize=7, color=MUTED)
-    if frame.empty:
+    if frame.empty or frame[rate].isna().all():
         axis.text(0.5, 0.5, "no data collected yet", transform=axis.transAxes,
                   ha="center", color=MUTED, fontsize=8)
         return
     for index, (_, _, group) in enumerate(config.REPORT_GROUPS):
-        cells = frame[(frame["group"] == group) & (frame[games] >= MIN_GAMES_PLOTTED)]
+        cells = frame[(frame["group"] == group) & (frame[games] >= MIN_GAMES_PLOTTED) & frame[rate].notna()]
         cells = cells.sort_values("midpoint")
         if cells.empty:
             continue

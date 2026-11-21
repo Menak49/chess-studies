@@ -10,6 +10,10 @@ Each cell of the grid costs two requests:
 A cell whose parent was never reached is stored without its second request: no
 game can then have reached the bait either, short of a transposition too rare
 to pay a request for.
+
+A second, much smaller grid reads the starting position once per quarter, speed
+and rating group: its count is every rated game of that slice. Dividing a trap's
+baits by it gives how common the trap is, whatever the opening's popularity.
 """
 
 from __future__ import annotations
@@ -62,6 +66,38 @@ def grid(
                     yield Cell(trap, period, speed, rating)
 
 
+class TotalCell(NamedTuple):
+    """One slice of all games: no trap, the starting position."""
+
+    period: Period
+    speed: str
+    rating: int
+
+    @property
+    def key(self) -> tuple[str, str, int]:
+        return (self.period.label, self.speed, self.rating)
+
+
+def total_key(row: dict) -> tuple[str, str, int]:
+    return (row["period"], row["speed"], int(row["rating"]))
+
+
+def open_totals_store() -> KeyedJsonl:
+    return KeyedJsonl(config.explorer_totals_path(), total_key)
+
+
+def total_grid(
+    periods: Iterable[Period] = config.PERIODS,
+    speeds: Iterable[str] = config.SPEEDS,
+    ratings: Iterable[int] = config.EXPLORER_RATINGS,
+) -> Iterator[TotalCell]:
+    speeds, ratings = tuple(speeds), tuple(ratings)
+    for period in periods:
+        for speed in speeds:
+            for rating in ratings:
+                yield TotalCell(period, speed, rating)
+
+
 def cell_row(cell: Cell, parent: ExplorerPosition, bait: ExplorerPosition | None) -> dict:
     """The stored form of a cell: raw counts only.
 
@@ -95,6 +131,9 @@ class GridStats:
 class GridCollector:
     """Fills the store cell by cell; re-running it resumes where it stopped."""
 
+    #: The most requests one cell can cost, checked against the budget.
+    requests_per_cell = 2
+
     def __init__(
         self,
         client,
@@ -115,7 +154,7 @@ class GridCollector:
             if cell.key in self._store:
                 self.stats.cells_skipped += 1
                 continue
-            if self.stats.requests + 2 > self._max_requests:
+            if self.stats.requests + self.requests_per_cell > self._max_requests:
                 logger.warning("request budget of %d reached", self._max_requests)
                 break
             try:
@@ -149,3 +188,14 @@ class GridCollector:
             self._client, play, speeds=[cell.speed], ratings=[cell.rating],
             since=cell.period.first, until=cell.period.last,
         )
+
+
+class TotalsCollector(GridCollector):
+    """The starting position of every slice: one request per cell."""
+
+    requests_per_cell = 1
+
+    def _read(self, cell: TotalCell) -> dict:
+        start = self._position(cell, ())
+        return {"period": cell.period.label, "speed": cell.speed, "rating": cell.rating,
+                "games": start.games}

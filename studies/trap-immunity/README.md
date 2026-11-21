@@ -100,8 +100,19 @@ per cell:
   black wins), and the falls are counted at analysis time. Changing the
   threshold therefore never means collecting again.
 
+A third, much smaller grid reads the starting position once per quarter × speed
+× rating group (864 requests). Its count is every rated game of that slice, and
+dividing a trap's baits by it gives the trap's **frequency**: games reaching the
+bait per 10,000 games. The adoption says whether those who can set the trap do;
+the frequency also moves with the opening's popularity, and says how often a
+player meets the trap at all.
+
 No game is downloaded. The limit is that the explorer files a game under the
 *average* rating of its two players, not the victim's.
+
+chess.com has no such count. Its crawl follows setters on purpose, so the share
+of baits in the games it reads says more about the method than about the pool,
+and the frequency is only reported for Lichess.
 
 **chess.com: following the setters, a sample.** chess.com has no search by
 position, only each player's monthly archives. A trap appears in a tiny fraction
@@ -179,6 +190,7 @@ git, and a variable set in the environment takes precedence over it.
 python -m trap_immunity.cli classify                   # only if the traps or the threshold change
 python -m trap_immunity.cli lichess                    # the whole grid
 python -m trap_immunity.cli lichess --traps stafford --speeds blitz
+python -m trap_immunity.cli lichess-totals             # all games per slice, for the frequency
 python -m trap_immunity.cli chesscom --years 2018-2025
 python -m trap_immunity.cli report
 ```
@@ -190,7 +202,7 @@ Orders of magnitude:
 
 - **Lichess.** 11 traps × 32 quarters × 3 speeds × 9 rating groups, at most two
   requests per cell: about 19,000 requests. Empty cells (a trap nobody played at
-  that level) cost one.
+  that level) cost one. The totals add 864 requests, about ten minutes.
 - **chess.com.** A trial on 2021 found about 3,000 baits in 240 requests (four
   minutes), although most of them were Scholar's mate. Filling 60 games per
   (trap, victim band) cell takes thousands of requests per year. Rare traps
@@ -201,19 +213,22 @@ Orders of magnitude:
 
 - `data/trap-immunity/raw/lichess/explorer_cells.jsonl`: one line per explorer
   cell, with every reply played at the bait and its results.
+- `data/trap-immunity/raw/lichess/explorer_totals.jsonl`: one line per quarter,
+  speed and rating group, with the number of games of that slice.
 - `data/trap-immunity/raw/chesscom/trap_games_<year>.jsonl`: one line per bait
   reached, with the setter, the victim, both ratings, the victim's move and the
   result.
 - `reports/tables/coverage.csv`: baits per trap and site, and which are
   reported.
-- `reports/tables/lichess_rates.csv`, `lichess_rates_by_speed.csv`: adoption,
-  fall rate, key fall rate and the setter's score after a fall, by quarter and
+- `reports/tables/lichess_rates.csv`, `lichess_rates_by_speed.csv`: frequency
+  per 10,000 games, adoption, fall rate, key fall rate and the setter's score after a fall, by quarter and
   rating group, with 95% Wilson intervals.
 - `reports/tables/chesscom_rates.csv`: fall and key fall rates by year and
   victim rating group, with the number of setters and the largest setter's
   share.
 - `reports/tables/before_after.csv`: the fall rate before each trap's event and
   from 12 months after it, with the difference and its 95% interval.
-- `reports/figures/<trap>.png`: per trap, three panels on one time axis:
-  Lichess adoption, Lichess fall rate, chess.com fall rate, by rating group.
+- `reports/figures/<trap>.png`: per trap, four panels on one time axis:
+  Lichess frequency, Lichess adoption, Lichess fall rate, chess.com fall rate,
+  by rating group.
   The 2020 boom is shaded and the video date, if any, is marked.

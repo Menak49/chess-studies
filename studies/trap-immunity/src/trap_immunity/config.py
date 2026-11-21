@@ -168,6 +168,10 @@ def explorer_path() -> Path:
     return DATA / "raw" / "lichess" / "explorer_cells.jsonl"
 
 
+def explorer_totals_path() -> Path:
+    return DATA / "raw" / "lichess" / "explorer_totals.jsonl"
+
+
 def trap_games_path(year: int) -> Path:
     return DATA / "raw" / "chesscom" / f"trap_games_{year}.jsonl"
 

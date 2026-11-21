@@ -1,7 +1,7 @@
 from chesslab.http import ApiError
 from chesslab.settings import YearMonth
 from trap_immunity.config import Period
-from trap_immunity.lichess_grid import GridCollector, cell_key, grid
+from trap_immunity.lichess_grid import GridCollector, TotalsCollector, cell_key, grid, total_grid, total_key
 from trap_immunity.storage import KeyedJsonl
 from trap_immunity.traps import TRAPS_BY_SLUG
 
@@ -23,6 +23,7 @@ BAIT = {
     ],
 }
 EMPTY = {"white": 0, "draws": 0, "black": 0, "moves": []}
+START = {"white": 5000, "draws": 400, "black": 4600, "moves": []}
 
 
 class FakeExplorer:
@@ -40,6 +41,8 @@ class FakeExplorer:
             raise ApiError("HTTP 502")
         if self.empty:
             return EMPTY
+        if "play" not in params:
+            return START
         play = tuple(params["play"].split(","))
         if play == STAFFORD.parent_uci:
             return PARENT
@@ -96,3 +99,15 @@ def test_the_budget_is_respected(tmp_path):
         grid([STAFFORD], [Q3], ["blitz"], [1000, 1200, 1400])
     )
     assert len(client.calls) == 4
+
+
+def test_totals_read_the_starting_position_once_per_slice(tmp_path):
+    client = FakeExplorer()
+    totals = KeyedJsonl(tmp_path / "totals.jsonl", total_key)
+    stats = TotalsCollector(client, totals, max_requests=3).collect(
+        total_grid([Q3], ["blitz", "rapid"], [1200, 1400])
+    )
+    assert len(client.calls) == 3 and stats.cells_stored == 3  # one request per slice
+    assert all("play" not in params for params in client.calls)
+    first = next(iter(totals.read_all()))
+    assert first == {"period": "2020Q3", "speed": "blitz", "rating": 1200, "games": 10000}

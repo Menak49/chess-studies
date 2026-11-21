@@ -63,6 +63,22 @@ def test_lichess_rates_sum_speeds_and_buckets_into_groups():
     assert rates.loc["<1200", "midpoint"] == pytest.approx(2020 + 7.5 / 12)
 
 
+def total(period, rating, speed="blitz", games=100_000):
+    return {"period": period, "speed": speed, "rating": rating, "games": games}
+
+
+def test_frequency_per_10k_games_needs_every_total():
+    rows = [explorer_row("2020Q3", 1200, "blitz", bait=100), explorer_row("2020Q3", 1400, "blitz", bait=50)]
+    rates = lichess_rates(rows, totals=[total("2020Q3", 1200), total("2020Q3", 1400, games=50_000)])
+    (cell,) = rates.to_dict("records")
+    assert cell["all_games"] == 150_000 and cell["frequency"] == pytest.approx(10.0)
+    assert cell["frequency_low"] < 10 < cell["frequency_high"]
+
+    (partial,) = lichess_rates(rows, totals=[total("2020Q3", 1200)]).to_dict("records")
+    assert math.isnan(partial["frequency"])  # the 1400 total is still missing
+    assert math.isnan(lichess_rates(rows)["frequency"][0])
+
+
 def test_rows_of_traps_no_longer_followed_are_ignored():
     rows = [explorer_row("2020Q3", 1200), explorer_row("2020Q3", 1200, trap="legal")]
     assert set(lichess_rates(rows)["trap"]) == {"stafford"}
@@ -123,15 +139,25 @@ def test_before_after_leaves_out_the_spreading_months():
 def test_report_writes_tables_and_a_figure_per_reported_trap(tmp_path):
     explorer = [explorer_row(f"{year}Q{q}", 1200) for year in range(2018, 2024) for q in (1, 2, 3, 4)]
     games = [trap_game(i, f"s{i}", 900, i % 3 == 0, month=f"{2018 + i % 6}-05") for i in range(400)]
-    written = generate_report(explorer, games, tables=tmp_path / "t", figures=tmp_path / "f")
+    totals = [total(f"{year}Q{q}", 1200) for year in range(2018, 2024) for q in (1, 2, 3, 4)]
+    written = generate_report(explorer, games, totals, tables=tmp_path / "t", figures=tmp_path / "f")
     names = {path.name for path in written}
+    rates = pd.read_csv(tmp_path / "t" / "lichess_rates.csv")
+    assert rates["frequency"].notna().all()
     assert {"coverage.csv", "lichess_rates.csv", "lichess_rates_by_speed.csv", "chesscom_rates.csv",
             "before_after.csv", "stafford.png"} <= names
     assert "englund.png" not in names  # nothing collected for it
 
 
 def test_report_with_nothing_collected(tmp_path):
-    assert generate_report([], [], tables=tmp_path / "t", figures=tmp_path / "f") == []
+    assert generate_report([], [], [], tables=tmp_path / "t", figures=tmp_path / "f") == []
+
+
+def test_report_without_totals_still_writes_the_rest(tmp_path):
+    explorer = [explorer_row(f"2020Q{q}", 1200) for q in (1, 2, 3, 4)]
+    written = generate_report(explorer, [], [], tables=tmp_path / "t", figures=tmp_path / "f")
+    assert "stafford.png" in {path.name for path in written}
+    assert pd.read_csv(tmp_path / "t" / "lichess_rates.csv")["frequency"].isna().all()
 
 
 def test_cli_parses_its_options():
@@ -139,6 +165,8 @@ def test_cli_parses_its_options():
     assert [trap.slug for trap in args.traps] == ["englund", "siberian"] and args.speeds == ("blitz",)
     with pytest.raises(SystemExit):
         build_parser().parse_args(["lichess", "--traps", "legal"])  # not admissible
+    args = build_parser().parse_args(["lichess-totals", "--speeds", "blitz,rapid"])
+    assert args.speeds == ("blitz", "rapid") and args.max_requests == 2000
     args = build_parser().parse_args(["chesscom", "--years", "2019-2021"])
     assert args.years == (2019, 2020, 2021)
     with pytest.raises(SystemExit):

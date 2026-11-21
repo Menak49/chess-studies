@@ -2,6 +2,7 @@
 
     classify  Stockfish            -> studies/trap-immunity/fall_moves.json (which replies fall)
     lichess   explorer.lichess.ovh -> data/trap-immunity/raw/lichess/explorer_cells.jsonl
+    lichess-totals                 -> data/trap-immunity/raw/lichess/explorer_totals.jsonl (all games)
     chesscom  api.chess.com        -> data/trap-immunity/raw/chesscom/trap_games_<year>.jsonl
     report    both                 -> studies/trap-immunity/reports/ (tables, figures)
 
@@ -87,6 +88,20 @@ def run_lichess(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_lichess_totals(args: argparse.Namespace) -> int:
+    from chesslab.lichess.explorer import ExplorerClient
+    from trap_immunity.lichess_grid import TotalsCollector, open_totals_store, total_grid
+
+    logger = logging.getLogger("lichess-totals")
+    store = open_totals_store()
+    cells = list(total_grid(speeds=args.speeds))
+    logger.info("%d slices, %d already stored", len(cells), len(store))
+    with ExplorerClient.from_environment(min_interval_seconds=args.min_interval) as client:
+        stats = TotalsCollector(client, store, max_requests=args.max_requests).collect(cells)
+    logger.info("done: %s", vars(stats))
+    return 0
+
+
 def run_chesscom(args: argparse.Namespace) -> int:
     from chesslab.chesscom import ChessComClient
     from chesslab.store import VisitedLog
@@ -140,6 +155,14 @@ def build_parser() -> argparse.ArgumentParser:
     lichess.add_argument("--min-interval", type=float, default=0.5,
                          help="seconds between two explorer requests")
     lichess.set_defaults(handler=run_lichess)
+
+    totals = commands.add_parser("lichess-totals",
+                                 help="count all games per quarter, speed and rating (needs $LICHESS_TOKEN)")
+    totals.add_argument("--speeds", type=parse_speeds, default=config.SPEEDS)
+    totals.add_argument("--max-requests", type=int, default=2000)
+    totals.add_argument("--min-interval", type=float, default=0.5,
+                        help="seconds between two explorer requests")
+    totals.set_defaults(handler=run_lichess_totals)
 
     chesscom = commands.add_parser("chesscom", help="follow trap setters through the archives")
     chesscom.add_argument("--years", type=parse_years, default=config.CHESSCOM_YEARS,

@@ -105,11 +105,13 @@ def fetch_position(
     """Counts at the position reached by the UCI moves `play`, from the start.
 
     `since` and `until` are both inclusive months. Asking for a single speed and
-    a single rating group per call is what lets a caller build a grid.
+    a single rating group per call is what lets a caller build a grid. No moves
+    means the starting position, whose count is every game of the slice.
     """
+    play = ",".join(play)
     params = {
         "variant": "standard",
-        "play": ",".join(play),
+        **({"play": play} if play else {}),
         "speeds": ",".join(speeds),
         "ratings": ",".join(str(rating) for rating in ratings),
         "since": str(since),

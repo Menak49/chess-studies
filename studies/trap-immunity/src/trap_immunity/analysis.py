@@ -11,7 +11,11 @@ Rates followed through time:
   well are not the same thing;
 * the *adoption* (Lichess only): among games reaching the setter's decision, the
   share where the trap is set. It shows who sets the trap and when, so that a
-  falling fall rate can be told apart from a change in who meets it.
+  falling fall rate can be told apart from a change in who meets it;
+* the *frequency* (Lichess only, once the totals are collected): games reaching
+  the bait per 10,000 rated games of the same slice. Unlike the adoption, it
+  also moves with the opening's popularity: it says how often a player meets
+  the trap at all.
 
 Falls are recomputed here from the raw replies, never read from the stored
 rows: the classification can then change without collecting anything again.
@@ -31,6 +35,9 @@ from trap_immunity.traps import TRAPS_BY_SLUG, Trap
 
 #: Rates resting on fewer games are left out of the figures (kept in the tables).
 MIN_GAMES_PLOTTED = 30
+
+#: The frequency is given per this many games: a share of all games is tiny.
+FREQUENCY_SCALE = 10_000
 
 SITES = ("lichess", "chesscom")
 
@@ -54,6 +61,20 @@ def _add_rate(frame: pd.DataFrame, name: str, successes: str, trials: str) -> pd
     return frame
 
 
+def _add_frequency(frame: pd.DataFrame) -> pd.DataFrame:
+    """Baits per FREQUENCY_SCALE games of the slice, with a Wilson interval."""
+    values = []
+    for baits, games in zip(frame["bait_games"], frame["all_games"]):
+        if pd.isna(games) or games <= 0:
+            values.append((math.nan, math.nan, math.nan))
+            continue
+        low, high = wilson_interval(int(baits), int(games))
+        values.append((baits / games, low, high))
+    for index, suffix in enumerate(("", "_low", "_high")):
+        frame[f"frequency{suffix}"] = [value[index] * FREQUENCY_SCALE for value in values]
+    return frame
+
+
 # --- Lichess -----------------------------------------------------------------
 
 
@@ -72,8 +93,12 @@ def _explorer_counts(row: dict, trap: Trap) -> dict:
     return {"fall_games": int(fall), "key_fall_games": int(key), "fall_setter_points": points}
 
 
-def explorer_frame(rows: Iterable[dict]) -> pd.DataFrame:
-    """One line per explorer cell of a followed trap, with its falls counted."""
+def explorer_frame(rows: Iterable[dict], totals: Iterable[dict] = ()) -> pd.DataFrame:
+    """One line per explorer cell of a followed trap, with its falls counted.
+
+    `all_games` is the slice's total from the starting position, or NaN while it
+    has not been collected.
+    """
     records = []
     for row in rows:
         trap = TRAPS_BY_SLUG.get(row["trap"])
@@ -89,17 +114,30 @@ def explorer_frame(rows: Iterable[dict]) -> pd.DataFrame:
     frame = pd.DataFrame(records)
     if not frame.empty:
         frame["group"] = frame["rating"].map(config.report_group)
+        all_games = {(row["period"], row["speed"], int(row["rating"])): row["games"] for row in totals}
+        frame["all_games"] = [
+            all_games.get(key, math.nan)
+            for key in zip(frame["period"], frame["speed"], frame["rating"])
+        ]
     return frame
 
 
-def lichess_rates(rows: Iterable[dict], by: tuple[str, ...] = ("trap", "period", "group")) -> pd.DataFrame:
-    """Explorer cells summed into `by` cells, with adoption and fall rates."""
-    frame = explorer_frame(rows)
+def lichess_rates(
+    rows: Iterable[dict],
+    by: tuple[str, ...] = ("trap", "period", "group"),
+    totals: Iterable[dict] = (),
+) -> pd.DataFrame:
+    """Explorer cells summed into `by` cells, with adoption, frequency and fall rates."""
+    frame = explorer_frame(rows, totals)
     if frame.empty:
         return frame
     counts = ["parent_games", "setter_move_games", "bait_games", "fall_games",
               "key_fall_games", "fall_setter_points"]
-    summed = frame.groupby(list(by), as_index=False)[counts].sum()
+    frame["missing_total"] = frame["all_games"].isna().astype(int)
+    summed = frame.groupby(list(by), as_index=False)[counts + ["all_games", "missing_total"]].sum()
+    # A cell summed over slices whose totals are not all known has no frequency.
+    summed["all_games"] = summed["all_games"].where(summed.pop("missing_total") == 0)
+    summed = _add_frequency(summed)
     summed = _add_rate(summed, "adoption", "setter_move_games", "parent_games")
     summed = _add_rate(summed, "fall_rate", "fall_games", "bait_games")
     summed = _add_rate(summed, "key_fall_rate", "key_fall_games", "bait_games")
