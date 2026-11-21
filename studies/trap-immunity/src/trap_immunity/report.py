@@ -16,7 +16,16 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from trap_immunity import config  # noqa: E402
-from trap_immunity.analysis import MIN_GAMES_PLOTTED, chesscom_rates, lichess_rates  # noqa: E402
+from trap_immunity.analysis import (  # noqa: E402
+    MIN_GAMES_PLOTTED,
+    SITES,
+    before_after,
+    chesscom_monthly_cells,
+    chesscom_rates,
+    coverage,
+    lichess_monthly_cells,
+    lichess_rates,
+)
 from trap_immunity.chesscom_crawl import open_store as open_trap_store  # noqa: E402
 from trap_immunity.lichess_grid import open_store as open_explorer_store  # noqa: E402
 from trap_immunity.traps import TRAPS, Trap  # noqa: E402
@@ -51,31 +60,60 @@ def generate_report(
     tables: Path = config.TABLES,
     figures: Path = config.FIGURES,
 ) -> list[Path]:
-    """Write every table and figure; return their paths."""
+    """Write every table and figure; return their paths.
+
+    A trap is reported for a site only once `MIN_TRAP_GAMES` baits were reached
+    there. Rarer traps are dropped from that site's tables and figures and only
+    appear in `coverage.csv`, which says why.
+    """
     explorer_rows = load_explorer_rows() if explorer_rows is None else explorer_rows
     trap_games = load_trap_games() if trap_games is None else trap_games
+    if not explorer_rows and not trap_games:
+        logger.warning("nothing collected yet: run `lichess` or `chesscom` first")
+        return []
     tables.mkdir(parents=True, exist_ok=True)
     figures.mkdir(parents=True, exist_ok=True)
-    written: list[Path] = []
 
     lichess = lichess_rates(explorer_rows)
     chesscom = chesscom_rates(trap_games)
-    if lichess.empty:
-        logger.warning("no Lichess explorer cells yet: run `lichess` first")
-    else:
+    covered = coverage(lichess, chesscom)
+    written = [_csv(covered, tables / "coverage.csv")]
+    kept = {
+        site: set(covered.loc[(covered["site"] == site) & covered["reported"], "trap"])
+        for site in SITES
+    }
+    for site, frame in (("lichess", lichess), ("chesscom", chesscom)):
+        dropped = sorted(set(covered.loc[covered["site"] == site, "trap"]) - kept[site])
+        if dropped:
+            logger.info("%s: too few baits to report %s", site, ", ".join(dropped))
+    lichess = _keep(lichess, kept["lichess"])
+    chesscom = _keep(chesscom, kept["chesscom"])
+
+    if not lichess.empty:
         written.append(_csv(lichess, tables / "lichess_rates.csv"))
-        by_speed = lichess_rates(explorer_rows, by=("trap", "period", "speed", "group"))
+        by_speed = _keep(lichess_rates(explorer_rows, by=("trap", "period", "speed", "group")), kept["lichess"])
         written.append(_csv(by_speed, tables / "lichess_rates_by_speed.csv"))
-    if chesscom.empty:
-        logger.warning("no chess.com trap games yet: run `chesscom` first")
-    else:
+    if not chesscom.empty:
         written.append(_csv(chesscom, tables / "chesscom_rates.csv"))
+
+    comparison = pd.concat([
+        before_after(_keep(lichess_monthly_cells(explorer_rows), kept["lichess"]), "lichess"),
+        before_after(_keep(chesscom_monthly_cells(trap_games), kept["chesscom"]), "chesscom"),
+    ], ignore_index=True)
+    if not comparison.empty:
+        written.append(_csv(comparison, tables / "before_after.csv"))
 
     for trap in TRAPS:
         path = plot_trap(trap, lichess, chesscom, figures / f"{trap.slug}.png")
         if path is not None:
             written.append(path)
     return written
+
+
+def _keep(frame: pd.DataFrame, traps: set[str]) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    return frame[frame["trap"].isin(traps)].reset_index(drop=True)
 
 
 def _csv(frame: pd.DataFrame, path: Path) -> Path:
@@ -112,6 +150,11 @@ def plot_trap(trap: Trap, lichess: pd.DataFrame, chesscom: pd.DataFrame, path: P
     if order:
         figure.legend([labelled[label] for label in order], order, title="Rating group",
                       frameon=False, fontsize=8, title_fontsize=8, loc="upper right", ncol=len(order))
+    # The whole study period on every figure, whatever has been collected, so
+    # that two traps' figures can be read side by side.
+    years = range(config.FIRST_YEAR, config.LAST_MONTH.year + 2)
+    axes[-1].set_xlim(years[0], years[-1])
+    axes[-1].set_xticks(list(years))
     axes[-1].set_xlabel("Year", color=INK)
     figure.suptitle(trap.name, color=INK, fontsize=12, x=0.07, ha="left")
     note = (
@@ -135,13 +178,15 @@ def _panel(axis, title, frame, rate, games, style, trap: Trap) -> None:
     for side in ("left", "bottom"):
         axis.spines[side].set_color(MUTED)
     axis.tick_params(colors=MUTED, labelsize=8)
+    boom_start, boom_end = (_decimal(month) for month in config.CHESS_BOOM)
+    axis.axvspan(boom_start, boom_end + 1 / 12, color=GRID, alpha=0.6, linewidth=0)
+    axis.annotate("2020 boom", (boom_start, 1), xycoords=("data", "axes fraction"),
+                  xytext=(3, -10), textcoords="offset points", fontsize=7, color=MUTED)
     if trap.popularised is not None:
-        when = trap.popularised.year + (trap.popularised.month - 1) / 12
+        when = _decimal(trap.popularised)
         axis.axvline(when, color=MUTED, linestyle="--", linewidth=1)
-        axis.annotate(
-            "popularised", (when, 1), xycoords=("data", "axes fraction"),
-            xytext=(3, -10), textcoords="offset points", fontsize=7, color=MUTED,
-        )
+        axis.annotate("video", (when, 1), xycoords=("data", "axes fraction"),
+                      xytext=(3, -20), textcoords="offset points", fontsize=7, color=MUTED)
     if frame.empty:
         axis.text(0.5, 0.5, "no data collected yet", transform=axis.transAxes,
                   ha="center", color=MUTED, fontsize=8)
@@ -161,8 +206,14 @@ def _panel(axis, title, frame, rate, games, style, trap: Trap) -> None:
             # keeps their intervals from hiding one another.
             dodge = (index - (len(config.REPORT_GROUPS) - 1) / 2) * 0.08
             axis.errorbar(
-                cells["midpoint"] + dodge, cells[rate],
-                yerr=[cells[rate] - cells[f"{rate}_low"], cells[f"{rate}_high"] - cells[rate]],
+                (cells["midpoint"] + dodge).to_numpy(), cells[rate].to_numpy(),
+                # Clipped: at 0% or 100% rounding can put a bound a hair inside the rate.
+                yerr=[(cells[rate] - cells[f"{rate}_low"]).clip(lower=0).to_numpy(),
+                      (cells[f"{rate}_high"] - cells[rate]).clip(lower=0).to_numpy()],
                 color=colour, marker="o", markersize=5, linewidth=2, capsize=0, label=group,
             )
     axis.set_ylim(bottom=0)
+
+
+def _decimal(month) -> float:
+    return month.year + (month.month - 1) / 12
