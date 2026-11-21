@@ -24,7 +24,8 @@ src/chesslab/              shared, study-independent
   settings.py              paths, API settings, and the engine settings
   http.py                  retrying, throttled HTTP client both sites share
   chesscom/                chess.com client and endpoint wrappers
-  lichess/                 Lichess client and game export
+  lichess/                 Lichess client, game export and opening explorer
+  pgn.py                   reading the moves of a PGN without a full parse
   records.py               GameRecord (one game, two sides) and RatingSnapshot
   store.py                 append-only, resumable JSONL stores
   engine/                  UCI analysis, accuracy/ACPL scoring, parallel runner
