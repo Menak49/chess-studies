@@ -25,10 +25,29 @@ REPORTS = STUDY_ROOT / "reports"
 TABLES = REPORTS / "tables"
 FIGURES = REPORTS / "figures"
 
-FIRST_YEAR = 2015
-#: The last month whose games are complete when the study was set up. The
-#: explorer indexes each monthly dump some weeks after the month ends.
-LAST_MONTH = YearMonth(2026, 9)
+#: Two years before the 2020 boom and the first viral traps, five after.
+FIRST_YEAR = 2018
+LAST_MONTH = YearMonth(2025, 12)
+
+#: The 2020 boom: lockdowns from March, The Queen's Gambit in late October,
+#: and a flood of new players into the new year. It is a popularisation event
+#: for every trap, and the only one for traps no datable video made famous.
+CHESS_BOOM = (YearMonth(2020, 3), YearMonth(2020, 12))
+
+
+# --- What falling into a trap means -----------------------------------------
+
+#: A trap has worked when the victim's move leaves the setter at least this far
+#: ahead by Stockfish's evaluation: two pawns, a decisive edge at club level.
+FALL_THRESHOLD_CP = 200
+
+#: Depth of the one-off analysis of each bait position. Deeper than the
+#: repository's accuracy depth (12): it is run once per trap, not per move of
+#: thousands of games, and a trap often only works because of a deep tactic.
+CLASSIFY_DEPTH = 20
+
+#: The classification, tracked with the study so that nothing else needs the engine.
+FALL_MOVES_PATH = STUDY_ROOT / "fall_moves.json"
 
 
 @dataclass(frozen=True)
@@ -113,6 +132,14 @@ ADOPTER_MIN_SIGHTINGS = 1
 
 
 # --- Reporting --------------------------------------------------------------
+
+#: A trap is reported for a site only if that many baits were reached there in
+#: total; rarer traps are dropped rather than drawn from a handful of games.
+MIN_TRAP_GAMES = 300
+
+#: The before/after comparison: "before" is every month up to the trap's event,
+#: "after" starts this many months later, once the news had time to spread.
+AFTER_LAG_MONTHS = 12
 
 #: Coarse rating groups shared by both sites' figures, as (low, high, label).
 #: On Lichess they group the explorer's average-rating buckets, on chess.com

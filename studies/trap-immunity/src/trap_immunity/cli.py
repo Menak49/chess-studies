@@ -1,10 +1,12 @@
 """Command line entry point of the trap-immunity study.
 
+    classify  Stockfish            -> studies/trap-immunity/fall_moves.json (which replies fall)
     lichess   explorer.lichess.ovh -> data/trap-immunity/raw/lichess/explorer_cells.jsonl
     chesscom  api.chess.com        -> data/trap-immunity/raw/chesscom/trap_games_<year>.jsonl
     report    both                 -> studies/trap-immunity/reports/ (tables, figures)
 
-Every command resumes where the previous run stopped. No engine is needed.
+Collection commands resume where the previous run stopped. Only `classify`
+needs the engine, once.
 """
 
 from __future__ import annotations
@@ -14,7 +16,9 @@ import json
 import logging
 import random
 import sys
+from pathlib import Path
 
+from chesslab.settings import ENGINE_PATH
 from trap_immunity import config
 from trap_immunity.traps import TRAPS, TRAPS_BY_SLUG
 
@@ -58,6 +62,15 @@ def parse_years(text: str) -> tuple[int, ...]:
     if unknown:
         raise argparse.ArgumentTypeError(f"outside the study period: {sorted(unknown)}")
     return tuple(sorted(years))
+
+
+def run_classify(args: argparse.Namespace) -> int:
+    from trap_immunity.classify import classify_traps, write_classification
+    from trap_immunity.traps import CANDIDATES
+
+    path = write_classification(classify_traps(CANDIDATES, args.engine, args.depth))
+    logging.getLogger("classify").info("wrote %s", path)
+    return 0
 
 
 def run_lichess(args: argparse.Namespace) -> int:
@@ -114,6 +127,11 @@ def build_parser() -> argparse.ArgumentParser:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-v", "--verbose", action="store_true")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    classify = commands.add_parser("classify", help="let Stockfish decide which replies fall")
+    classify.add_argument("--engine", type=Path, default=ENGINE_PATH)
+    classify.add_argument("--depth", type=int, default=config.CLASSIFY_DEPTH)
+    classify.set_defaults(handler=run_classify)
 
     lichess = commands.add_parser("lichess", help="read the explorer grid (needs $LICHESS_TOKEN)")
     lichess.add_argument("--traps", type=parse_traps, default=TRAPS, help="comma-separated slugs, or all")
