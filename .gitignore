@@ -1,11 +1,12 @@
-# Data and build artefacts
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-# reports/ is tracked on purpose: it is the study's deliverable, and
+# Data and build artefacts: every study writes under data/<study>/
+data/*
+!data/.gitkeep
+# studies/*/reports/ is tracked on purpose: it is each study's deliverable, and
 # findings.md links to the tables and figures next to it.
 tools/stockfish/
+
+# Secrets (API tokens): see .env.example
+.env
 
 # Python
 __pycache__/
