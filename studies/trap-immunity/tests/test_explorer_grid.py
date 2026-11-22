@@ -111,3 +111,22 @@ def test_totals_read_the_starting_position_once_per_slice(tmp_path):
     assert all("play" not in params for params in client.calls)
     first = next(iter(totals.read_all()))
     assert first == {"period": "2020Q3", "speed": "blitz", "rating": 1200, "games": 10000}
+
+
+def test_entries_read_the_setters_choice_once_per_cell(tmp_path):
+    from trap_immunity.lichess_grid import EntryCollector, entry_grid
+    from trap_immunity.traps import TRAPS_BY_SLUG
+
+    class EntryExplorer(FakeExplorer):
+        def get(self, path, *, params=None):
+            self.calls.append(params)
+            return {"white": 50, "draws": 0, "black": 50,
+                    "moves": [{"san": "Nc6", "uci": "b8c6", "white": 10, "draws": 0, "black": 10}]}
+
+    client = EntryExplorer()
+    entries = KeyedJsonl(tmp_path / "entries.jsonl", cell_key)
+    traps = [STAFFORD, TRAPS_BY_SLUG["scholars-mate"]]  # the mate's entry is its trap move
+    EntryCollector(client, entries).collect(entry_grid(traps, periods=[Q3], speeds=["blitz"], ratings=[1200]))
+    assert len(client.calls) == 1 and client.calls[0]["play"] == ",".join(STAFFORD.entry_uci)
+    (row,) = entries.read_all()
+    assert (row["trap"], row["entry_games"], row["entry_move_games"]) == ("stafford", 100, 20)

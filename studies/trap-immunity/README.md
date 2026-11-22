@@ -100,6 +100,15 @@ per cell:
   black wins), and the falls are counted at analysis time. Changing the
   threshold therefore never means collecting again.
 
+The adoption measured there is close to 100% for most traps, and says little:
+a player who reached 5.d3 in the Stafford has already chosen the gambit, and
+plays 5...Bc5 almost every time. The choice is made earlier, at the trap's
+**entry** (3...Nc6 for the Stafford, 1...e5 for the Englund). A second grid
+reads that position, one request per cell, and the **entry rate** (the share of
+games taking the line where it can be taken) is what the figures show. For
+Scholar's mate and the Caro-Kann smothered mate, the entry is the trap move
+itself, already read at the parent.
+
 A third, much smaller grid reads the starting position once per quarter × speed
 × rating group (864 requests). Its count is every rated game of that slice, and
 dividing a trap's baits by it gives the trap's **frequency**: games reaching the
@@ -190,6 +199,7 @@ git, and a variable set in the environment takes precedence over it.
 python -m trap_immunity.cli classify                   # only if the traps or the threshold change
 python -m trap_immunity.cli lichess                    # the whole grid
 python -m trap_immunity.cli lichess --traps stafford --speeds blitz
+python -m trap_immunity.cli lichess-entries            # where setters choose the trap's line
 python -m trap_immunity.cli lichess-totals             # all games per slice, for the frequency
 python -m trap_immunity.cli chesscom --years 2018-2025
 python -m trap_immunity.cli report
@@ -202,7 +212,8 @@ Orders of magnitude:
 
 - **Lichess.** 11 traps × 32 quarters × 3 speeds × 9 rating groups, at most two
   requests per cell: about 19,000 requests. Empty cells (a trap nobody played at
-  that level) cost one. The totals add 864 requests, about ten minutes.
+  that level) cost one. The entries add 864 requests per trap (9 traps, about
+five hours at the explorer's pace), the totals 864 requests in all.
 - **chess.com.** A trial on 2021 found about 3,000 baits in 240 requests (four
   minutes), although most of them were Scholar's mate. Filling 60 games per
   (trap, victim band) cell takes thousands of requests per year. Rare traps
@@ -213,6 +224,8 @@ Orders of magnitude:
 
 - `data/trap-immunity/raw/lichess/explorer_cells.jsonl`: one line per explorer
   cell, with every reply played at the bait and its results.
+- `data/trap-immunity/raw/lichess/explorer_entries.jsonl`: one line per trap
+  and cell, with the games at the entry position and those taking the line.
 - `data/trap-immunity/raw/lichess/explorer_totals.jsonl`: one line per quarter,
   speed and rating group, with the number of games of that slice.
 - `data/trap-immunity/raw/chesscom/trap_games_<year>.jsonl`: one line per bait
@@ -221,7 +234,7 @@ Orders of magnitude:
 - `reports/tables/coverage.csv`: baits per trap and site, and which are
   reported.
 - `reports/tables/lichess_rates.csv`, `lichess_rates_by_speed.csv`: frequency
-  per 10,000 games, adoption, fall rate, key fall rate and the setter's score after a fall, by quarter and
+  per 10,000 games, entry rate, adoption at the trap move, fall rate, key fall rate and the setter's score after a fall, by quarter and
   rating group, with 95% Wilson intervals.
 - `reports/tables/chesscom_rates.csv`: fall and key fall rates by year and
   victim rating group, with the number of setters and the largest setter's
@@ -229,6 +242,7 @@ Orders of magnitude:
 - `reports/tables/before_after.csv`: the fall rate before each trap's event and
   from 12 months after it, with the difference and its 95% interval.
 - `reports/figures/<trap>.png`: per trap, four panels on one time axis:
-  Lichess frequency, Lichess adoption, Lichess fall rate, chess.com fall rate,
-  by rating group.
+  Lichess frequency, Lichess entry rate, Lichess fall rate, chess.com fall rate,
+  by rating group. A victim falls when their reply at the trap leaves the
+  setter two pawns up or more.
   The 2020 boom is shaded and the video date, if any, is marked.

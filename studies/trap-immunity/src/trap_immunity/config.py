@@ -172,6 +172,10 @@ def explorer_path() -> Path:
     return DATA / "raw" / "lichess" / "explorer_cells.jsonl"
 
 
+def explorer_entries_path() -> Path:
+    return DATA / "raw" / "lichess" / "explorer_entries.jsonl"
+
+
 def explorer_totals_path() -> Path:
     return DATA / "raw" / "lichess" / "explorer_totals.jsonl"
 

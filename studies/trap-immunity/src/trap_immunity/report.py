@@ -30,7 +30,7 @@ from trap_immunity.analysis import (  # noqa: E402
 )
 from trap_immunity.chesscom_crawl import open_store as open_trap_store  # noqa: E402
 from trap_immunity.lichess_grid import open_store as open_explorer_store  # noqa: E402
-from trap_immunity.lichess_grid import open_totals_store  # noqa: E402
+from trap_immunity.lichess_grid import open_entries_store, open_totals_store  # noqa: E402
 from trap_immunity.traps import TRAPS, TRAPS_BY_SLUG, Trap  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,10 @@ INK, MUTED, GRID = "#2b2b2b", "#6b6b6b", "#e6e6e3"
 
 def load_explorer_rows() -> list[dict]:
     return list(open_explorer_store().read_all())
+
+
+def load_explorer_entries() -> list[dict]:
+    return list(open_entries_store().read_all())
 
 
 def load_explorer_totals() -> list[dict]:
@@ -66,6 +70,7 @@ def generate_report(
     trap_games: list[dict] | None = None,
     totals: list[dict] | None = None,
     manual: pd.DataFrame | None = None,
+    entries: list[dict] | None = None,
     tables: Path = config.TABLES,
     figures: Path = config.FIGURES,
 ) -> list[Path]:
@@ -79,6 +84,7 @@ def generate_report(
     trap_games = load_trap_games() if trap_games is None else trap_games
     totals = load_explorer_totals() if totals is None else totals
     manual = manual_entry_frame() if manual is None else manual
+    entries = load_explorer_entries() if entries is None else entries
     if explorer_rows and not totals:
         logger.info("no Lichess totals yet: run `lichess-totals` for the frequency")
     if not explorer_rows and not trap_games:
@@ -87,7 +93,7 @@ def generate_report(
     tables.mkdir(parents=True, exist_ok=True)
     figures.mkdir(parents=True, exist_ok=True)
 
-    lichess = lichess_rates(explorer_rows, totals=totals)
+    lichess = lichess_rates(explorer_rows, totals=totals, entries=entries)
     chesscom = chesscom_rates(trap_games)
     covered = coverage(lichess, chesscom)
     written = [_csv(covered, tables / "coverage.csv")]
@@ -104,7 +110,7 @@ def generate_report(
 
     if not lichess.empty:
         written.append(_csv(lichess, tables / "lichess_rates.csv"))
-        by_speed = _keep(lichess_rates(explorer_rows, by=("trap", "period", "speed", "group"), totals=totals), kept["lichess"])
+        by_speed = _keep(lichess_rates(explorer_rows, by=("trap", "period", "speed", "group"), totals=totals, entries=entries), kept["lichess"])
         written.append(_csv(by_speed, tables / "lichess_rates_by_speed.csv"))
     if not chesscom.empty:
         written.append(_csv(chesscom, tables / "chesscom_rates.csv"))
@@ -145,7 +151,7 @@ def _of_trap(frame: pd.DataFrame, trap: Trap) -> pd.DataFrame:
 
 
 def plot_trap(trap: Trap, lichess: pd.DataFrame, chesscom: pd.DataFrame, path: Path) -> Path | None:
-    """Four panels on one time axis: Lichess frequency and adoption, then the falls on both sites."""
+    """Four panels on one time axis: Lichess frequency and entry rate, then the falls on both sites."""
     lichess, chesscom = _of_trap(lichess, trap), _of_trap(chesscom, trap)
     if lichess.empty and chesscom.empty:
         return None
@@ -153,9 +159,12 @@ def plot_trap(trap: Trap, lichess: pd.DataFrame, chesscom: pd.DataFrame, path: P
     panels = [
         (f"Lichess: games reaching the bait per {FREQUENCY_SCALE:,} games", lichess, "frequency",
          "all_games", "-"),
-        ("Lichess: share of games where the trap is set", lichess, "adoption", "parent_games", "-"),
-        ("Lichess: share of victims who take the bait", lichess, "fall_rate", "bait_games", "-"),
-        ("chess.com: share of victims who take the bait", chesscom, "fall_rate", "bait_games", "o"),
+        (f"Lichess: share of games entering the line with {trap.entry_san}, where it can be played",
+         lichess, "entry_rate", "entry_games", "-"),
+        ("Lichess: share of victims whose reply at the trap leaves the setter 2+ pawns up (Stockfish)",
+         lichess, "fall_rate", "bait_games", "-"),
+        ("chess.com: share of victims whose reply at the trap leaves the setter 2+ pawns up (Stockfish)",
+         chesscom, "fall_rate", "bait_games", "o"),
     ]
     figure, axes = plt.subplots(len(panels), 1, figsize=(9, 12), sharex=True)
     for axis, (title, frame, rate, games, style) in zip(axes, panels):

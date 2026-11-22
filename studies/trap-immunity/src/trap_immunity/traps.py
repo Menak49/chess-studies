@@ -39,9 +39,16 @@ class Trap:
     #: When a datable video made the trap famous, and which one.
     popularised: YearMonth | None = None
     source: str = ""
+    #: Index in `line` of the setter's *entry* move: where they choose to head
+    #: for the trap (3...Nc6 for the Stafford). None when that choice is the
+    #: trap move itself. Measuring adoption at the trap move would only show
+    #: that players already in the line follow it.
+    entry_ply: int | None = None
 
     def __post_init__(self) -> None:
         self.bait_board.parse_san(self.key_fall)  # raises on an illegal line or move
+        if self.entry_ply is not None and self.entry_ply % 2 != (len(self.line) - 1) % 2:
+            raise ValueError(f"{self.slug}: the entry move must be the setter's")
 
     @cached_property
     def bait_board(self) -> chess.Board:
@@ -70,6 +77,30 @@ class Trap:
     def parent_uci(self) -> tuple[str, ...]:
         """The moves up to the setter's decision, one ply before the bait."""
         return self.line_uci[:-1]
+
+    @property
+    def entry_index(self) -> int:
+        return len(self.line) - 1 if self.entry_ply is None else self.entry_ply
+
+    @property
+    def has_own_entry(self) -> bool:
+        """False when the entry is the trap move, already read at the parent."""
+        return self.entry_index != len(self.line) - 1
+
+    @property
+    def entry_uci(self) -> tuple[str, ...]:
+        """The moves up to the setter's entry decision."""
+        return self.line_uci[:self.entry_index]
+
+    @property
+    def entry_move(self) -> str:
+        return normalise_san(self.line[self.entry_index])
+
+    @property
+    def entry_san(self) -> str:
+        """The entry as text, e.g. '3...Nc6'."""
+        number = self.entry_index // 2 + 1
+        return f"{number}{'.' if self.entry_index % 2 == 0 else '...'}{self.line[self.entry_index]}"
 
     @property
     def setter_move(self) -> str:
@@ -106,6 +137,8 @@ CANDIDATES: tuple[Trap, ...] = (
         "stafford", "Stafford Gambit, 6.Bg5",
         _line("e4 e5 Nf3 Nf6 Nxe5 Nc6 Nxc6 dxc6 d3 Bc5"), "Bg5",
         YearMonth(2020, 8), f"{_ROSEN}, 'Beating Everyone with the Same Opening Trap (Stafford Gambit)', 2020-08-01",
+
+        entry_ply=5,
     ),
     Trap(
         "stafford-queen", "Stafford Gambit, 7.Bxd8",
@@ -116,19 +149,27 @@ CANDIDATES: tuple[Trap, ...] = (
         "englund-rosen", "Englund Gambit, Rosen's trap, 5.dxe7",
         _line("d4 e5 dxe5 Bc5 Nf3 d6 exd6 Ne7"), "dxe7",
         YearMonth(2020, 11), f"{_ROSEN}, 'EVERYONE falls for this NEW opening trap', 2020-11-18",
+
+        entry_ply=3,
     ),
     Trap(
         "englund", "Englund Gambit, 6.Bc3",
         _line("d4 e5 dxe5 Nc6 Nf3 Qe7 Bf4 Qb4+ Bd2 Qxb2"), "Bc3",
+
+        entry_ply=1,
     ),
     Trap(
         "fishing-pole", "Fishing Pole, 6.hxg4",
         _line("e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Ng4 h3 h5"), "hxg4",
         YearMonth(2021, 6), f"{_ROSEN}, 'Tricks & Traps Everyone Should Know in the Ruy Lopez', 2021-06-25",
+
+        entry_ply=7,
     ),
     Trap(
         "blackburne-shilling", "Blackburne Shilling Gambit, 5.Nxf7",
         _line("e4 e5 Nf3 Nc6 Bc4 Nd4 Nxe5 Qg5"), "Nxf7",
+
+        entry_ply=5,
     ),
     Trap(
         "scholars-mate", "Scholar's mate, 3...Nf6",
@@ -137,10 +178,14 @@ CANDIDATES: tuple[Trap, ...] = (
     Trap(
         "noahs-ark", "Noah's Ark trap, 8.Qxd4",
         _line("e4 e5 Nf3 Nc6 Bb5 a6 Ba4 d6 d4 b5 Bb3 Nxd4 Nxd4 exd4"), "Qxd4",
+
+        entry_ply=9,
     ),
     Trap(
         "siberian", "Siberian trap, 9.h3",
         _line("e4 c5 d4 cxd4 c3 dxc3 Nxc3 Nc6 Nf3 e6 Bc4 Qc7 O-O Nf6 Qe2 Ng4"), "h3",
+
+        entry_ply=11,
     ),
     Trap(
         "caro-kann-smothered", "Caro-Kann smothered mate, 5...Ngf6",
@@ -149,10 +194,14 @@ CANDIDATES: tuple[Trap, ...] = (
     Trap(
         "kieninger", "Budapest Gambit, Kieninger trap, 8.axb4",
         _line("d4 Nf6 c4 e5 dxe5 Ng4 Nf3 Nc6 Bf4 Bb4+ Nbd2 Qe7 a3 Ngxe5"), "axb4",
+
+        entry_ply=3,
     ),
     Trap(
         "lasker", "Albin Countergambit, Lasker trap, 6.Bxb4",
         _line("d4 d5 c4 e5 dxe5 d4 e3 Bb4+ Bd2 dxe3"), "Bxb4",
+
+        entry_ply=3,
     ),
     Trap(
         "legal", "Legal's mate, 5...Bxd1",

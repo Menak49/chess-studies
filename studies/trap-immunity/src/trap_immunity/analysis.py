@@ -9,9 +9,12 @@ Rates followed through time:
 * the *key fall rate*: the same for the textbook blunder alone, the move the
   videos show. Learning that specific move and learning to play the position
   well are not the same thing;
-* the *adoption* (Lichess only): among games reaching the setter's decision, the
-  share where the trap is set. It shows who sets the trap and when, so that a
-  falling fall rate can be told apart from a change in who meets it;
+* the *entry rate* (Lichess only): at the position where the setter chooses the
+  trap's line (3...Nc6 for the Stafford), the share of games taking it. It shows
+  who sets the trap and when, so that a falling fall rate can be told apart from
+  a change in who meets it. The *adoption*, the same share at the trap move
+  itself, is kept in the tables but is near 100% for most traps: players already
+  in the line follow it;
 * the *frequency* (Lichess only, once the totals are collected): games reaching
   the bait per 10,000 rated games of the same slice. Unlike the adoption, it
   also moves with the opening's popularity: it says how often a player meets
@@ -44,7 +47,7 @@ SITES = ("lichess", "chesscom")
 
 def wilson_interval(successes: int, trials: int, z: float = 1.96) -> tuple[float, float]:
     """95% Wilson score interval of a proportion; (nan, nan) without trials."""
-    if trials <= 0:
+    if pd.isna(trials) or trials <= 0:
         return math.nan, math.nan
     p = successes / trials
     denominator = 1 + z**2 / trials
@@ -55,7 +58,10 @@ def wilson_interval(successes: int, trials: int, z: float = 1.96) -> tuple[float
 
 def _add_rate(frame: pd.DataFrame, name: str, successes: str, trials: str) -> pd.DataFrame:
     frame[name] = frame[successes] / frame[trials].where(frame[trials] > 0)
-    bounds = [wilson_interval(int(k), int(n)) for k, n in zip(frame[successes], frame[trials])]
+    bounds = [
+        (math.nan, math.nan) if pd.isna(n) else wilson_interval(int(k), int(n))
+        for k, n in zip(frame[successes], frame[trials])
+    ]
     frame[f"{name}_low"] = [low for low, _ in bounds]
     frame[f"{name}_high"] = [high for _, high in bounds]
     return frame
@@ -93,7 +99,7 @@ def _explorer_counts(row: dict, trap: Trap) -> dict:
     return {"fall_games": int(fall), "key_fall_games": int(key), "fall_setter_points": points}
 
 
-def explorer_frame(rows: Iterable[dict], totals: Iterable[dict] = ()) -> pd.DataFrame:
+def explorer_frame(rows: Iterable[dict], totals: Iterable[dict] = (), entries: Iterable[dict] = ()) -> pd.DataFrame:
     """One line per explorer cell of a followed trap, with its falls counted.
 
     `all_games` is the slice's total from the starting position, or NaN while it
@@ -119,6 +125,20 @@ def explorer_frame(rows: Iterable[dict], totals: Iterable[dict] = ()) -> pd.Data
             all_games.get(key, math.nan)
             for key in zip(frame["period"], frame["speed"], frame["rating"])
         ]
+        # The entry: its own reading, or the parent's when the entry is the trap move.
+        own = {(row["trap"], row["period"], row["speed"], int(row["rating"])): row for row in entries}
+        entry_games, entry_move_games = [], []
+        for record in frame.itertuples():
+            trap = TRAPS_BY_SLUG[record.trap]
+            if not trap.has_own_entry:
+                entry_games.append(record.parent_games)
+                entry_move_games.append(record.setter_move_games)
+                continue
+            row = own.get((record.trap, record.period, record.speed, int(record.rating)))
+            entry_games.append(row["entry_games"] if row else math.nan)
+            entry_move_games.append(row["entry_move_games"] if row else math.nan)
+        frame["entry_games"] = entry_games
+        frame["entry_move_games"] = entry_move_games
     return frame
 
 
@@ -126,9 +146,10 @@ def lichess_rates(
     rows: Iterable[dict],
     by: tuple[str, ...] = ("trap", "period", "group"),
     totals: Iterable[dict] = (),
+    entries: Iterable[dict] = (),
 ) -> pd.DataFrame:
-    """Explorer cells summed into `by` cells, with adoption, frequency and fall rates."""
-    frame = explorer_frame(rows, totals)
+    """Explorer cells summed into `by` cells, with entry, adoption, frequency and fall rates."""
+    frame = explorer_frame(rows, totals, entries)
     if frame.empty:
         return frame
     counts = ["parent_games", "setter_move_games", "bait_games", "fall_games",
@@ -138,6 +159,12 @@ def lichess_rates(
     # A cell summed over slices whose totals are not all known has no frequency.
     summed["all_games"] = summed["all_games"].where(summed.pop("missing_total") == 0)
     summed = _add_frequency(summed)
+    frame["missing_entry"] = frame["entry_games"].isna().astype(int)
+    entry = frame.groupby(list(by), as_index=False)[["entry_games", "entry_move_games", "missing_entry"]].sum()
+    complete = entry.pop("missing_entry") == 0
+    for column in ("entry_games", "entry_move_games"):
+        summed[column] = entry[column].where(complete)
+    summed = _add_rate(summed, "entry_rate", "entry_move_games", "entry_games")
     summed = _add_rate(summed, "adoption", "setter_move_games", "parent_games")
     summed = _add_rate(summed, "fall_rate", "fall_games", "bait_games")
     summed = _add_rate(summed, "key_fall_rate", "key_fall_games", "bait_games")

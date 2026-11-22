@@ -189,3 +189,13 @@ def test_cli_parses_its_options():
     assert args.years == (2019, 2020, 2021)
     with pytest.raises(SystemExit):
         build_parser().parse_args(["lichess", "--traps", "nope"])
+
+
+def test_entry_rate_uses_its_own_reading_or_the_parent():
+    rows = [explorer_row("2020Q3", 1200), explorer_row("2020Q3", 1200, trap="scholars-mate")]
+    entries = [{"trap": "stafford", "period": "2020Q3", "speed": "blitz", "rating": 1200,
+                "entry_games": 5000, "entry_move_games": 500}]
+    rates = lichess_rates(rows, entries=entries).set_index("trap")
+    assert rates.loc["stafford", "entry_rate"] == pytest.approx(0.1)
+    assert rates.loc["scholars-mate", "entry_rate"] == pytest.approx(0.2)  # the parent's 200/1000
+    assert math.isnan(lichess_rates(rows).set_index("trap").loc["stafford", "entry_rate"])

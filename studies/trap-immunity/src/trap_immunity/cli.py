@@ -2,6 +2,7 @@
 
     classify  Stockfish            -> studies/trap-immunity/fall_moves.json (which replies fall)
     lichess   explorer.lichess.ovh -> data/trap-immunity/raw/lichess/explorer_cells.jsonl
+    lichess-entries                -> data/trap-immunity/raw/lichess/explorer_entries.jsonl (who enters the line)
     lichess-totals                 -> data/trap-immunity/raw/lichess/explorer_totals.jsonl (all games)
     chesscom  api.chess.com        -> data/trap-immunity/raw/chesscom/trap_games_<year>.jsonl
     report    both                 -> studies/trap-immunity/reports/ (tables, figures)
@@ -88,6 +89,20 @@ def run_lichess(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_lichess_entries(args: argparse.Namespace) -> int:
+    from chesslab.lichess.explorer import ExplorerClient
+    from trap_immunity.lichess_grid import EntryCollector, entry_grid, open_entries_store
+
+    logger = logging.getLogger("lichess-entries")
+    store = open_entries_store()
+    cells = list(entry_grid(args.traps, speeds=args.speeds))
+    logger.info("%d cells, %d already stored", len(cells), len(store))
+    with ExplorerClient.from_environment(min_interval_seconds=args.min_interval) as client:
+        stats = EntryCollector(client, store, max_requests=args.max_requests).collect(cells)
+    logger.info("done: %s", vars(stats))
+    return 0
+
+
 def run_lichess_totals(args: argparse.Namespace) -> int:
     from chesslab.lichess.explorer import ExplorerClient
     from trap_immunity.lichess_grid import TotalsCollector, open_totals_store, total_grid
@@ -155,6 +170,15 @@ def build_parser() -> argparse.ArgumentParser:
     lichess.add_argument("--min-interval", type=float, default=0.5,
                          help="seconds between two explorer requests")
     lichess.set_defaults(handler=run_lichess)
+
+    entries = commands.add_parser("lichess-entries",
+                                  help="read where setters choose the trap's line (needs $LICHESS_TOKEN)")
+    entries.add_argument("--traps", type=parse_traps, default=TRAPS, help="comma-separated slugs, or all")
+    entries.add_argument("--speeds", type=parse_speeds, default=config.SPEEDS)
+    entries.add_argument("--max-requests", type=int, default=10000)
+    entries.add_argument("--min-interval", type=float, default=0.5,
+                         help="seconds between two explorer requests")
+    entries.set_defaults(handler=run_lichess_entries)
 
     totals = commands.add_parser("lichess-totals",
                                  help="count all games per quarter, speed and rating (needs $LICHESS_TOKEN)")

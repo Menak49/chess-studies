@@ -82,6 +82,15 @@ def total_key(row: dict) -> tuple[str, str, int]:
     return (row["period"], row["speed"], int(row["rating"]))
 
 
+def open_entries_store() -> KeyedJsonl:
+    return KeyedJsonl(config.explorer_entries_path(), cell_key)
+
+
+def entry_grid(traps: Iterable[Trap], **kwargs) -> Iterator[Cell]:
+    """The grid of the traps whose entry is not already read at the parent."""
+    return grid([trap for trap in traps if trap.has_own_entry], **kwargs)
+
+
 def open_totals_store() -> KeyedJsonl:
     return KeyedJsonl(config.explorer_totals_path(), total_key)
 
@@ -199,3 +208,18 @@ class TotalsCollector(GridCollector):
         start = self._position(cell, ())
         return {"period": cell.period.label, "speed": cell.speed, "rating": cell.rating,
                 "games": start.games}
+
+
+class EntryCollector(GridCollector):
+    """The position where the setter chooses the trap's line: one request per cell."""
+
+    requests_per_cell = 1
+
+    def _read(self, cell: Cell) -> dict:
+        entry = self._position(cell, cell.trap.entry_uci)
+        move = entry.move(cell.trap.entry_move)
+        return {
+            "trap": cell.trap.slug, "period": cell.period.label, "speed": cell.speed,
+            "rating": cell.rating, "entry_games": entry.games,
+            "entry_move_games": move.games if move else 0,
+        }

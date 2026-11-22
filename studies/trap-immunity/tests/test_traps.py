@@ -108,3 +108,14 @@ def test_chesscom_months_and_report_groups():
     assert config.report_group(999) == "<1200"
     assert config.report_group(1600) == "1600-1999"
     assert config.report_group(2700) == "2000+"
+
+
+def test_entries_are_the_setters_choice():
+    from trap_immunity.traps import TRAPS_BY_SLUG
+
+    stafford = TRAPS_BY_SLUG["stafford"]
+    assert stafford.entry_san == "3...Nc6" and stafford.entry_move == "Nc6"
+    assert stafford.entry_uci == ("e2e4", "e7e5", "g1f3", "g8f6", "f3e5")
+    assert TRAPS_BY_SLUG["englund"].entry_san == "1...e5"
+    scholars = TRAPS_BY_SLUG["scholars-mate"]
+    assert not scholars.has_own_entry and scholars.entry_uci == scholars.parent_uci
