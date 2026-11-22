@@ -14,6 +14,7 @@ one fixed engine instead of trusting the sites' own figures.
 | Study | Question | Findings |
 |---|---|---|
 | [elo-drift](studies/elo-drift/README.md) | What playing strength does a rating buy, year by year from 2014 to 2026, on chess.com and Lichess? How do the four big online pools convert into one another in 2026? | [findings.md](studies/elo-drift/reports/findings.md) |
+| [trap-immunity](studies/trap-immunity/README.md) | When an opening trap goes viral, do players learn to avoid it, and how fast at each rating? Eleven traps, 2018 to 2025. | [report.md](studies/trap-immunity/reports/report.md) |
 
 ## How the repository is organised
 
@@ -26,13 +27,14 @@ src/chesslab/              shared, study-independent
   chesscom/                chess.com client and endpoint wrappers
   lichess/                 Lichess client, game export and opening explorer
   pgn.py                   reading the moves of a PGN without a full parse
+  env.py                   secrets read from the environment or a local .env
   records.py               GameRecord (one game, two sides) and RatingSnapshot
   store.py                 append-only, resumable JSONL stores
   engine/                  UCI analysis, accuracy/ACPL scoring, parallel runner
 studies/<name>/
   src/<name>/              the study: its config, how it samples, how it analyses
   tests/
-  reports/                 its deliverable: findings.md, tables, figures
+  reports/                 its deliverable: a findings or report note, tables, figures
   README.md                its question, method and results
 data/<name>/               each study's collected and processed data (not tracked)
 tools/stockfish/           the engine binary (not tracked)
@@ -70,20 +72,27 @@ The engine is not vendored. Download a Stockfish build and put the binary at
 `tools/stockfish/stockfish.exe`. Any recent version works, as long as one version
 is used for everything that is compared. The studies so far used Stockfish 19.
 
+The Lichess opening explorer needs a personal token, without any scope, from
+https://lichess.org/account/oauth/token. Copy `.env.example` to `.env` and put
+it after `LICHESS_TOKEN=`. `.env` is not tracked.
+
 Each study is run through its own command line, described in its README:
 
 ```bash
 python -m elo_drift.cli collect | survey | evaluate | report
+python -m trap_immunity.cli classify | lichess | lichess-entries | lichess-totals | chesscom | report
 ```
 
 ## Rules that hold for every study
 
-- **One Lichess job at a time, across all studies.** Lichess serves one request at
-  a time per client and locks an address out of its streaming endpoints for about
+- **One Lichess job at a time, across all studies,** the opening explorer
+  included. Lichess serves one request at a time per client and locks an address out of its streaming endpoints for about
   an hour when a stream is abandoned. Never run two Lichess crawls at once, and
   never kill one mid-request.
 - **Same engine, same depth.** Re-analysing part of a corpus with another Stockfish
   version or depth makes its scores incomparable with the rest.
+- **Tokens stay out of the repository.** They live in `.env` or in the
+  environment, never in code or config.
 - **Published results are tagged.** Before changing shared code in a way that
   could move an existing study's numbers, check that its `report` still
   reproduces its tracked tables. The state of elo-drift as first published is
