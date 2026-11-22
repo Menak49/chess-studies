@@ -114,7 +114,7 @@ def test_totals_read_the_starting_position_once_per_slice(tmp_path):
 
 
 def test_entries_read_the_setters_choice_once_per_cell(tmp_path):
-    from trap_immunity.lichess_grid import EntryCollector, entry_grid
+    from trap_immunity.lichess_grid import EntryCollector, entry_grid, entry_key
     from trap_immunity.traps import TRAPS_BY_SLUG
 
     class EntryExplorer(FakeExplorer):
@@ -124,9 +124,12 @@ def test_entries_read_the_setters_choice_once_per_cell(tmp_path):
                     "moves": [{"san": "Nc6", "uci": "b8c6", "white": 10, "draws": 0, "black": 10}]}
 
     client = EntryExplorer()
-    entries = KeyedJsonl(tmp_path / "entries.jsonl", cell_key)
+    entries = KeyedJsonl(tmp_path / "entries.jsonl", entry_key)
     traps = [STAFFORD, TRAPS_BY_SLUG["scholars-mate"]]  # the mate's entry is its trap move
-    EntryCollector(client, entries).collect(entry_grid(traps, periods=[Q3], speeds=["blitz"], ratings=[1200]))
-    assert len(client.calls) == 1 and client.calls[0]["play"] == ",".join(STAFFORD.entry_uci)
-    (row,) = entries.read_all()
-    assert (row["trap"], row["entry_games"], row["entry_move_games"]) == ("stafford", 100, 20)
+    EntryCollector(client, entries).collect(entry_grid(traps, periods=[Q3]))
+    # One request per report group, every speed and rating bucket of the group at once.
+    assert len(client.calls) == 4
+    assert all(call["play"] == ",".join(STAFFORD.entry_uci) for call in client.calls)
+    assert client.calls[0]["speeds"] == "bullet,blitz,rapid" and client.calls[0]["ratings"] == "0,1000"
+    row = next(iter(entries.read_all()))
+    assert (row["trap"], row["group"], row["entry_games"], row["entry_move_games"]) == ("stafford", "<1200", 100, 20)

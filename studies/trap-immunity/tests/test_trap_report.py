@@ -193,9 +193,11 @@ def test_cli_parses_its_options():
 
 def test_entry_rate_uses_its_own_reading_or_the_parent():
     rows = [explorer_row("2020Q3", 1200), explorer_row("2020Q3", 1200, trap="scholars-mate")]
-    entries = [{"trap": "stafford", "period": "2020Q3", "speed": "blitz", "rating": 1200,
+    entries = [{"trap": "stafford", "period": "2020Q3", "group": "1200-1599",
                 "entry_games": 5000, "entry_move_games": 500}]
     rates = lichess_rates(rows, entries=entries).set_index("trap")
     assert rates.loc["stafford", "entry_rate"] == pytest.approx(0.1)
     assert rates.loc["scholars-mate", "entry_rate"] == pytest.approx(0.2)  # the parent's 200/1000
     assert math.isnan(lichess_rates(rows).set_index("trap").loc["stafford", "entry_rate"])
+    by_speed = lichess_rates(rows, by=("trap", "period", "speed", "group"), entries=entries)
+    assert by_speed["entry_rate"].isna().all()  # entries are read per group only

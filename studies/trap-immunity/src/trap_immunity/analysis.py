@@ -67,6 +67,19 @@ def _add_rate(frame: pd.DataFrame, name: str, successes: str, trials: str) -> pd
     return frame
 
 
+def _add_entries(summed: pd.DataFrame, by: tuple[str, ...], entries: Iterable[dict]) -> pd.DataFrame:
+    games, taking = [math.nan] * len(summed), [math.nan] * len(summed)
+    if set(by) == {"trap", "period", "group"}:
+        read = {(row["trap"], row["period"], row["group"]): row for row in entries}
+        for index, record in enumerate(summed.itertuples()):
+            if not TRAPS_BY_SLUG[record.trap].has_own_entry:
+                games[index], taking[index] = record.parent_games, record.setter_move_games
+            elif (row := read.get((record.trap, record.period, record.group))) is not None:
+                games[index], taking[index] = row["entry_games"], row["entry_move_games"]
+    summed["entry_games"], summed["entry_move_games"] = games, taking
+    return summed
+
+
 def _add_frequency(frame: pd.DataFrame) -> pd.DataFrame:
     """Baits per FREQUENCY_SCALE games of the slice, with a Wilson interval."""
     values = []
@@ -99,7 +112,7 @@ def _explorer_counts(row: dict, trap: Trap) -> dict:
     return {"fall_games": int(fall), "key_fall_games": int(key), "fall_setter_points": points}
 
 
-def explorer_frame(rows: Iterable[dict], totals: Iterable[dict] = (), entries: Iterable[dict] = ()) -> pd.DataFrame:
+def explorer_frame(rows: Iterable[dict], totals: Iterable[dict] = ()) -> pd.DataFrame:
     """One line per explorer cell of a followed trap, with its falls counted.
 
     `all_games` is the slice's total from the starting position, or NaN while it
@@ -125,20 +138,6 @@ def explorer_frame(rows: Iterable[dict], totals: Iterable[dict] = (), entries: I
             all_games.get(key, math.nan)
             for key in zip(frame["period"], frame["speed"], frame["rating"])
         ]
-        # The entry: its own reading, or the parent's when the entry is the trap move.
-        own = {(row["trap"], row["period"], row["speed"], int(row["rating"])): row for row in entries}
-        entry_games, entry_move_games = [], []
-        for record in frame.itertuples():
-            trap = TRAPS_BY_SLUG[record.trap]
-            if not trap.has_own_entry:
-                entry_games.append(record.parent_games)
-                entry_move_games.append(record.setter_move_games)
-                continue
-            row = own.get((record.trap, record.period, record.speed, int(record.rating)))
-            entry_games.append(row["entry_games"] if row else math.nan)
-            entry_move_games.append(row["entry_move_games"] if row else math.nan)
-        frame["entry_games"] = entry_games
-        frame["entry_move_games"] = entry_move_games
     return frame
 
 
@@ -148,8 +147,13 @@ def lichess_rates(
     totals: Iterable[dict] = (),
     entries: Iterable[dict] = (),
 ) -> pd.DataFrame:
-    """Explorer cells summed into `by` cells, with entry, adoption, frequency and fall rates."""
-    frame = explorer_frame(rows, totals, entries)
+    """Explorer cells summed into `by` cells, with entry, adoption, frequency and fall rates.
+
+    The entry rate exists only by (trap, period, group): entries are read per
+    report group, all speeds together. Where a trap's entry is its trap move, the
+    parent's counts are the entry's.
+    """
+    frame = explorer_frame(rows, totals)
     if frame.empty:
         return frame
     counts = ["parent_games", "setter_move_games", "bait_games", "fall_games",
@@ -159,11 +163,7 @@ def lichess_rates(
     # A cell summed over slices whose totals are not all known has no frequency.
     summed["all_games"] = summed["all_games"].where(summed.pop("missing_total") == 0)
     summed = _add_frequency(summed)
-    frame["missing_entry"] = frame["entry_games"].isna().astype(int)
-    entry = frame.groupby(list(by), as_index=False)[["entry_games", "entry_move_games", "missing_entry"]].sum()
-    complete = entry.pop("missing_entry") == 0
-    for column in ("entry_games", "entry_move_games"):
-        summed[column] = entry[column].where(complete)
+    summed = _add_entries(summed, by, entries)
     summed = _add_rate(summed, "entry_rate", "entry_move_games", "entry_games")
     summed = _add_rate(summed, "adoption", "setter_move_games", "parent_games")
     summed = _add_rate(summed, "fall_rate", "fall_games", "bait_games")

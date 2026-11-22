@@ -82,13 +82,48 @@ def total_key(row: dict) -> tuple[str, str, int]:
     return (row["period"], row["speed"], int(row["rating"]))
 
 
+class EntryCell(NamedTuple):
+    """One trap's entry over a quarter and a report group, all speeds together.
+
+    The entry rate is drawn by group only, so one request covers every speed and
+    every explorer rating of the group: 128 requests per trap instead of 864.
+    """
+
+    trap: Trap
+    period: Period
+    group: str
+    ratings: tuple[int, ...]
+
+    @property
+    def key(self) -> tuple[str, str, str]:
+        return (self.trap.slug, self.period.label, self.group)
+
+
+def entry_key(row: dict) -> tuple[str, str, str]:
+    return (row["trap"], row["period"], row["group"])
+
+
 def open_entries_store() -> KeyedJsonl:
-    return KeyedJsonl(config.explorer_entries_path(), cell_key)
+    return KeyedJsonl(config.explorer_entries_path(), entry_key)
 
 
-def entry_grid(traps: Iterable[Trap], **kwargs) -> Iterator[Cell]:
-    """The grid of the traps whose entry is not already read at the parent."""
-    return grid([trap for trap in traps if trap.has_own_entry], **kwargs)
+def group_ratings(ratings: Iterable[int] = config.EXPLORER_RATINGS) -> dict[str, tuple[int, ...]]:
+    """The explorer's rating buckets in each report group."""
+    groups: dict[str, list[int]] = {}
+    for rating in ratings:
+        groups.setdefault(config.report_group(rating), []).append(rating)
+    return {group: tuple(members) for group, members in groups.items()}
+
+
+def entry_grid(traps: Iterable[Trap], periods: Iterable[Period] = config.PERIODS) -> Iterator[EntryCell]:
+    """The traps whose entry is not already read at the parent, one trap at a time."""
+    periods, groups = tuple(periods), group_ratings()
+    for trap in traps:
+        if not trap.has_own_entry:
+            continue
+        for period in periods:
+            for group, ratings in groups.items():
+                yield EntryCell(trap, period, group, ratings)
 
 
 def open_totals_store() -> KeyedJsonl:
@@ -215,11 +250,14 @@ class EntryCollector(GridCollector):
 
     requests_per_cell = 1
 
-    def _read(self, cell: Cell) -> dict:
-        entry = self._position(cell, cell.trap.entry_uci)
+    def _read(self, cell: EntryCell) -> dict:
+        self.stats.requests += 1
+        entry = fetch_position(
+            self._client, cell.trap.entry_uci, speeds=config.SPEEDS, ratings=cell.ratings,
+            since=cell.period.first, until=cell.period.last,
+        )
         move = entry.move(cell.trap.entry_move)
         return {
-            "trap": cell.trap.slug, "period": cell.period.label, "speed": cell.speed,
-            "rating": cell.rating, "entry_games": entry.games,
-            "entry_move_games": move.games if move else 0,
+            "trap": cell.trap.slug, "period": cell.period.label, "group": cell.group,
+            "entry_games": entry.games, "entry_move_games": move.games if move else 0,
         }

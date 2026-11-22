@@ -95,7 +95,7 @@ def run_lichess_entries(args: argparse.Namespace) -> int:
 
     logger = logging.getLogger("lichess-entries")
     store = open_entries_store()
-    cells = list(entry_grid(args.traps, speeds=args.speeds))
+    cells = list(entry_grid(args.traps))
     logger.info("%d cells, %d already stored", len(cells), len(store))
     with ExplorerClient.from_environment(min_interval_seconds=args.min_interval) as client:
         stats = EntryCollector(client, store, max_requests=args.max_requests).collect(cells)
@@ -174,7 +174,6 @@ def build_parser() -> argparse.ArgumentParser:
     entries = commands.add_parser("lichess-entries",
                                   help="read where setters choose the trap's line (needs $LICHESS_TOKEN)")
     entries.add_argument("--traps", type=parse_traps, default=TRAPS, help="comma-separated slugs, or all")
-    entries.add_argument("--speeds", type=parse_speeds, default=config.SPEEDS)
     entries.add_argument("--max-requests", type=int, default=10000)
     entries.add_argument("--min-interval", type=float, default=0.5,
                          help="seconds between two explorer requests")

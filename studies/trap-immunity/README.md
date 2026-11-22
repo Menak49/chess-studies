@@ -104,7 +104,8 @@ The adoption measured there is close to 100% for most traps, and says little:
 a player who reached 5.d3 in the Stafford has already chosen the gambit, and
 plays 5...Bc5 almost every time. The choice is made earlier, at the trap's
 **entry** (3...Nc6 for the Stafford, 1...e5 for the Englund). A second grid
-reads that position, one request per cell, and the **entry rate** (the share of
+reads that position once per quarter and report group, all speeds together (128
+requests per trap), and the **entry rate** (the share of
 games taking the line where it can be taken) is what the figures show. For
 Scholar's mate and the Caro-Kann smothered mate, the entry is the trap move
 itself, already read at the parent.
@@ -212,8 +213,8 @@ Orders of magnitude:
 
 - **Lichess.** 11 traps × 32 quarters × 3 speeds × 9 rating groups, at most two
   requests per cell: about 19,000 requests. Empty cells (a trap nobody played at
-  that level) cost one. The entries add 864 requests per trap (9 traps, about
-five hours at the explorer's pace), the totals 864 requests in all.
+  that level) cost one. The entries add 128 requests per trap (9 traps, about
+45 minutes at the explorer's pace), the totals 864 requests in all.
 - **chess.com.** A trial on 2021 found about 3,000 baits in 240 requests (four
   minutes), although most of them were Scholar's mate. Filling 60 games per
   (trap, victim band) cell takes thousands of requests per year. Rare traps
@@ -224,8 +225,8 @@ five hours at the explorer's pace), the totals 864 requests in all.
 
 - `data/trap-immunity/raw/lichess/explorer_cells.jsonl`: one line per explorer
   cell, with every reply played at the bait and its results.
-- `data/trap-immunity/raw/lichess/explorer_entries.jsonl`: one line per trap
-  and cell, with the games at the entry position and those taking the line.
+- `data/trap-immunity/raw/lichess/explorer_entries_by_group.jsonl`: one line
+  per trap, quarter and report group, with the games at the entry position and those taking the line.
 - `data/trap-immunity/raw/lichess/explorer_totals.jsonl`: one line per quarter,
   speed and rating group, with the number of games of that slice.
 - `data/trap-immunity/raw/chesscom/trap_games_<year>.jsonl`: one line per bait

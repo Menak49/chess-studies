@@ -173,7 +173,7 @@ def explorer_path() -> Path:
 
 
 def explorer_entries_path() -> Path:
-    return DATA / "raw" / "lichess" / "explorer_entries.jsonl"
+    return DATA / "raw" / "lichess" / "explorer_entries_by_group.jsonl"
 
 
 def explorer_totals_path() -> Path:
