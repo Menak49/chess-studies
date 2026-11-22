@@ -281,3 +281,18 @@ def chesscom_monthly_cells(rows: Iterable[dict]) -> pd.DataFrame:
     return frame.groupby(["trap", "group", "month"], as_index=False).agg(
         bait_games=("fell", "size"), fall_games=("fell", "sum")
     )
+
+
+# --- chess.com explorer, read by hand -----------------------------------------
+
+
+def manual_entry_frame(path=config.MANUAL_EXPLORER_PATH) -> pd.DataFrame:
+    """The filled rows of the hand readings, with the draws deduced."""
+    if not path.exists():
+        return pd.DataFrame()
+    frame = pd.read_csv(path).dropna(subset=["played_pct"])
+    if frame.empty:
+        return frame
+    frame["year"] = frame["year"].astype(int)
+    frame["draw_pct"] = 100 - frame["white_win_pct"] - frame["black_win_pct"]
+    return frame.reset_index(drop=True)

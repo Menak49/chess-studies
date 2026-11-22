@@ -26,11 +26,12 @@ from trap_immunity.analysis import (  # noqa: E402
     coverage,
     lichess_monthly_cells,
     lichess_rates,
+    manual_entry_frame,
 )
 from trap_immunity.chesscom_crawl import open_store as open_trap_store  # noqa: E402
 from trap_immunity.lichess_grid import open_store as open_explorer_store  # noqa: E402
 from trap_immunity.lichess_grid import open_totals_store  # noqa: E402
-from trap_immunity.traps import TRAPS, Trap  # noqa: E402
+from trap_immunity.traps import TRAPS, TRAPS_BY_SLUG, Trap  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ def generate_report(
     explorer_rows: list[dict] | None = None,
     trap_games: list[dict] | None = None,
     totals: list[dict] | None = None,
+    manual: pd.DataFrame | None = None,
     tables: Path = config.TABLES,
     figures: Path = config.FIGURES,
 ) -> list[Path]:
@@ -76,6 +78,7 @@ def generate_report(
     explorer_rows = load_explorer_rows() if explorer_rows is None else explorer_rows
     trap_games = load_trap_games() if trap_games is None else trap_games
     totals = load_explorer_totals() if totals is None else totals
+    manual = manual_entry_frame() if manual is None else manual
     if explorer_rows and not totals:
         logger.info("no Lichess totals yet: run `lichess-totals` for the frequency")
     if not explorer_rows and not trap_games:
@@ -112,6 +115,10 @@ def generate_report(
     ], ignore_index=True)
     if not comparison.empty:
         written.append(_csv(comparison, tables / "before_after.csv"))
+
+    if not manual.empty:
+        written.append(_csv(manual, tables / "chesscom_explorer_entry.csv"))
+        written.append(plot_entry(manual, figures / "chesscom_explorer_entry.png"))
 
     for trap in TRAPS:
         path = plot_trap(trap, lichess, chesscom, figures / f"{trap.slug}.png")
@@ -226,6 +233,56 @@ def _panel(axis, title, frame, rate, games, style, trap: Trap) -> None:
                 color=colour, marker="o", markersize=5, linewidth=2, capsize=0, label=group,
             )
     axis.set_ylim(bottom=0)
+
+
+def plot_entry(frame: pd.DataFrame, path: Path) -> Path:
+    """Share of games entering each trap on chess.com, by year: one panel per trap.
+
+    The traps' shares differ by an order of magnitude, so each gets its own
+    panel and scale rather than sharing one axis.
+    """
+    slugs = [slug for slug in dict.fromkeys(frame["trap"])]
+    figure, axes = plt.subplots(len(slugs), 1, figsize=(9, 2.8 * len(slugs) + 0.6), sharex=True,
+                                squeeze=False)
+    for axis, slug in zip(axes[:, 0], slugs):
+        cells = frame[frame["trap"] == slug].sort_values("year")
+        row = cells.iloc[0]
+        trap = TRAPS_BY_SLUG.get(slug)
+        # The opening only: the readings measure entering the gambit, not the trap move.
+        opening = trap.name.split(",")[0] if trap else slug
+        title = f"{opening}: share of games at {row['position']} continuing {row['entry_move']}"
+        axis.set_title(title, fontsize=9, color=INK, loc="left")
+        axis.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(100))
+        axis.grid(axis="y", color=GRID, linewidth=0.8)
+        axis.set_axisbelow(True)
+        for side in ("top", "right"):
+            axis.spines[side].set_visible(False)
+        for side in ("left", "bottom"):
+            axis.spines[side].set_color(MUTED)
+        axis.tick_params(colors=MUTED, labelsize=8)
+        boom_start, boom_end = (_decimal(month) for month in config.CHESS_BOOM)
+        axis.axvspan(boom_start, boom_end + 1 / 12, color=GRID, alpha=0.6, linewidth=0)
+        if trap is not None and trap.popularised is not None:
+            axis.axvline(_decimal(trap.popularised), color=MUTED, linestyle="--", linewidth=1)
+        # A calendar year is plotted at its middle, like the chess.com rates.
+        x = cells["year"] + 0.5
+        axis.plot(x, cells["played_pct"], color=GROUP_COLOURS["1600-1999"], linewidth=2,
+                  marker="o", markersize=5)
+        peak = cells.loc[cells["played_pct"].idxmax()]
+        axis.annotate(f"{peak['played_pct']:g}%", (peak["year"] + 0.5, peak["played_pct"]),
+                      xytext=(0, 6), textcoords="offset points", ha="center", fontsize=8, color=INK)
+        axis.set_ylim(0, cells["played_pct"].max() * 1.2)
+    years = range(config.FIRST_YEAR, config.LAST_MONTH.year + 2)
+    axes[-1, 0].set_xlim(years[0], years[-1])
+    axes[-1, 0].set_xticks(list(years))
+    axes[-1, 0].set_xlabel("Year", color=INK)
+    figure.suptitle("chess.com opening explorer, read by hand", color=INK, fontsize=12, x=0.07, ha="left")
+    figure.text(0.07, 0.01, "Shaded: the 2020 boom. Dashed: the trap's video. Filters in manual/README.md.",
+                fontsize=7, color=MUTED)
+    figure.tight_layout(rect=(0, 0.03, 1, 0.97))
+    figure.savefig(path, dpi=150)
+    plt.close(figure)
+    return path
 
 
 def _decimal(month) -> float:

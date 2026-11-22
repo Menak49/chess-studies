@@ -49,6 +49,10 @@ CLASSIFY_DEPTH = 20
 #: The classification, tracked with the study so that nothing else needs the engine.
 FALL_MOVES_PATH = STUDY_ROOT / "fall_moves.json"
 
+#: chess.com explorer figures read by hand (see manual/README.md): how often each
+#: trap's entry move is played, by year.
+MANUAL_EXPLORER_PATH = STUDY_ROOT / "manual" / "chesscom_explorer.csv"
+
 
 @dataclass(frozen=True)
 class Period:

@@ -9,6 +9,7 @@ from trap_immunity.analysis import (
     chesscom_rates,
     coverage,
     lichess_rates,
+    manual_entry_frame,
     trap_games_frame,
     wilson_interval,
 )
@@ -147,6 +148,23 @@ def test_report_writes_tables_and_a_figure_per_reported_trap(tmp_path):
     assert {"coverage.csv", "lichess_rates.csv", "lichess_rates_by_speed.csv", "chesscom_rates.csv",
             "before_after.csv", "stafford.png"} <= names
     assert "englund.png" not in names  # nothing collected for it
+
+
+def test_manual_readings_are_reported(tmp_path):
+    readings = tmp_path / "manual.csv"
+    readings.write_text(
+        "trap,year,position,entry_move,games_with_move,played_pct,white_win_pct,black_win_pct\n"
+        "stafford,2018,1.e4 e5 2.Nf3 Nf6 3.Nxe5,Nc6,105000,5,50,47\n"
+        "stafford,2021,1.e4 e5 2.Nf3 Nf6 3.Nxe5,Nc6,5700000,34,45,51\n"
+        "blackburne-shilling,2018,1.e4 e5 2.Nf3 Nc6 3.Bc4,Nd4,,,,\n",
+        encoding="utf-8",
+    )
+    manual = manual_entry_frame(readings)
+    assert list(manual["year"]) == [2018, 2021]  # the unfilled row is left out
+    assert list(manual["draw_pct"]) == [3, 4]
+    explorer = [explorer_row(f"2020Q{q}", 1200) for q in (1, 2, 3, 4)]
+    written = generate_report(explorer, [], [], manual, tables=tmp_path / "t", figures=tmp_path / "f")
+    assert {"chesscom_explorer_entry.csv", "chesscom_explorer_entry.png"} <= {path.name for path in written}
 
 
 def test_report_with_nothing_collected(tmp_path):
